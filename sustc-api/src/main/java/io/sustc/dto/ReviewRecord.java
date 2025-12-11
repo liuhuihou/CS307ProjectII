@@ -41,7 +41,7 @@ public class ReviewRecord implements Serializable {
     /**
      * The score given to this recipe
      */
-    private float rating;
+    private int rating;
 
     /**
      * Review content
