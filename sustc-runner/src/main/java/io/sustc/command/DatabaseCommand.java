@@ -118,6 +118,58 @@ public class DatabaseCommand {
         }
     }
 
+
+    //自己定义的测试方法
+    //评论api测试
+
+    @ShellMethod(key = "review add", value = "Add a review: recipeId rating review userId")
+    public long reviewAdd(long recipeId, int rating, String review, long userId) {
+        AuthInfo auth = new AuthInfo(userId, null);
+        long id = reviewService.addReview(auth, recipeId, rating, review);
+        System.out.println("added reviewId: " + id);
+        return id;
+    }
+
+    @ShellMethod(key = "review edit", value = "Edit a review: recipeId reviewId rating review userId")
+    public void reviewEdit(long recipeId, long reviewId, int rating, String review, long userId) {
+        AuthInfo auth = new AuthInfo(userId, null);
+        reviewService.editReview(auth, recipeId, reviewId, rating, review);
+        System.out.println("edited reviewId: " + reviewId);
+    }
+
+    @ShellMethod(key = "review delete", value = "Delete a review: recipeId reviewId userId")
+    public void reviewDelete(long recipeId, long reviewId, long userId) {
+        AuthInfo auth = new AuthInfo(userId, null);
+        reviewService.deleteReview(auth, recipeId, reviewId);
+        System.out.println("deleted reviewId: " + reviewId);
+    }
+
+    @ShellMethod(key = "review like", value = "Like a review: reviewId userId")
+    public long reviewLike(long reviewId, long userId) {
+        AuthInfo auth = new AuthInfo(userId, null);
+        long cnt = reviewService.likeReview(auth, reviewId);
+        System.out.println("likes count: " + cnt);
+        return cnt;
+    }
+
+    @ShellMethod(key = "review unlike", value = "Unlike a review: reviewId userId")
+    public long reviewUnlike(long reviewId, long userId) {
+        AuthInfo auth = new AuthInfo(userId, null);
+        long cnt = reviewService.unlikeReview(auth, reviewId);
+        System.out.println("likes count: " + cnt);
+        return cnt;
+    }
+
+    @ShellMethod(key = "review list", value = "List reviews: recipeId page size sort")
+    public PageResult<ReviewRecord> reviewList(long recipeId, int page, int size, String sort) {
+        PageResult<ReviewRecord> res = reviewService.listByRecipe(recipeId, page, size, sort);
+        System.out.println("total: " + res.getTotal() + ", page: " + res.getPage() + ", size: " + res.getSize());
+        res.getItems().forEach(r -> System.out.println("rid=" + r.getReviewId() + ", rating=" + r.getRating()));
+        return res;
+    }
+
+
+
     private static String[] parseCsvList(String listStr) {
         if (listStr == null || listStr.trim().isEmpty() || "null".equalsIgnoreCase(listStr.trim())) {
             return new String[0];
