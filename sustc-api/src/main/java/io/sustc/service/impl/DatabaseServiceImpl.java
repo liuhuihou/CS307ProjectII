@@ -1,73 +1,254 @@
 package io.sustc.service.impl;
 
+import io.sustc.dto.RecipeRecord;
 import io.sustc.dto.ReviewRecord;
 import io.sustc.dto.UserRecord;
-import io.sustc.dto.RecipeRecord;
 import io.sustc.service.DatabaseService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-import java.util.*;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
-/**
- * It's important to mark your implementation class with {@link Service} annotation.
- * As long as the class is annotated and implements the corresponding interface, you can place it under any package.
- */
 @Service
 @Slf4j
 public class DatabaseServiceImpl implements DatabaseService {
 
-    /**
-     * Getting a {@link DataSource} instance from the framework, whose connections are managed by HikariCP.
-     * <p>
-     * Marking a field with {@link Autowired} annotation enables our framework to automatically
-     * provide you a well-configured instance of {@link DataSource}.
-     * Learn more: <a href="https://www.baeldung.com/spring-dependency-injection">Dependency Injection</a>
-     */
     @Autowired
     private DataSource dataSource;
-
-    @Override
-    public List<Integer> getGroupMembers() {
-        //TODO: replace this with your own student IDs in your group
-        return Arrays.asList(12412103,12411103);
-    }
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Override
-    @Transactional
-    public void importData(
-            List<ReviewRecord> reviewRecords,
-            List<UserRecord> userRecords,
-            List<RecipeRecord> recipeRecords) {
-
-        // ddl to create tables.
-        createTables();
-
-        // TODO: implement your import logic
-
+    public List<Integer> getGroupMembers() {
+        return Arrays.asList(12412103, 12411103);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void importData(List<ReviewRecord> reviewRecords,
+                           List<UserRecord> userRecords,
+                           List<RecipeRecord> recipeRecords) {
+
+        Objects.requireNonNull(reviewRecords, "reviewRecords cannot be null");
+        Objects.requireNonNull(userRecords, "userRecords cannot be null");
+        Objects.requireNonNull(recipeRecords, "recipeRecords cannot be null");
+
+        createTables();
+        truncateTables();
+
+        batchInsertUsers(userRecords);
+        batchInsertUserFollows(userRecords);
+
+        batchInsertRecipes(recipeRecords);
+        batchInsertRecipeIngredients(recipeRecords);
+
+        batchInsertReviews(reviewRecords);
+        batchInsertReviewLikes(reviewRecords);
+
+        log.info("Imported {} users, {} recipes and {} reviews.",
+                userRecords.size(), recipeRecords.size(), reviewRecords.size());
+    }
+
+    private void batchInsertUsers(List<UserRecord> users) {
+        if (users.isEmpty()) {
+            return;
+        }
+        String sql = "INSERT INTO users (AuthorId, AuthorName, Gender, Age, Followers, Following, Password, IsDeleted) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
+                "ON CONFLICT (AuthorId) DO UPDATE SET " +
+                "AuthorName = EXCLUDED.AuthorName, Gender = EXCLUDED.Gender, Age = EXCLUDED.Age, " +
+                "Followers = EXCLUDED.Followers, Following = EXCLUDED.Following, Password = EXCLUDED.Password, " +
+                "IsDeleted = EXCLUDED.IsDeleted";
+        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement ps, int i) throws SQLException {
+                UserRecord user = users.get(i);
+                ps.setLong(1, user.getAuthorId());
+                ps.setString(2, user.getAuthorName());
+                ps.setString(3, user.getGender());
+                ps.setObject(4, user.getAge());
+                ps.setObject(5, user.getFollowers());
+                ps.setObject(6, user.getFollowing());
+                ps.setString(7, user.getPassword());
+                ps.setBoolean(8, user.isDeleted());
+            }
+
+            @Override
+            public int getBatchSize() {
+                return users.size();
+            }
+        });
+    }
+
+    private void batchInsertUserFollows(List<UserRecord> users) {
+        List<Object[]> relations = new ArrayList<>();
+        for (UserRecord user : users) {
+            long followerId = user.getAuthorId();
+            long[] followingUsers = user.getFollowingUsers();
+            if (followingUsers == null || followingUsers.length == 0) {
+                continue;
+            }
+            for (long followeeId : followingUsers) {
+                if (followeeId <= 0 || followeeId == followerId) {
+                    continue;
+                }
+                relations.add(new Object[]{followerId, followeeId});
+            }
+        }
+        if (relations.isEmpty()) {
+            return;
+        }
+        jdbcTemplate.batchUpdate(
+                "INSERT INTO user_follows (FollowerId, FollowingId) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                relations);
+    }
+
+    private void batchInsertRecipes(List<RecipeRecord> recipes) {
+        if (recipes.isEmpty()) {
+            return;
+        }
+        String sql = "INSERT INTO recipes (RecipeId, Name, AuthorId, CookTime, PrepTime, TotalTime, DatePublished, " +
+                "Description, RecipeCategory, AggregatedRating, ReviewCount, Calories, FatContent, SaturatedFatContent, " +
+                "CholesterolContent, SodiumContent, CarbohydrateContent, FiberContent, SugarContent, ProteinContent, " +
+                "RecipeServings, RecipeYield) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) " +
+                "ON CONFLICT (RecipeId) DO UPDATE SET " +
+                "Name = EXCLUDED.Name, AuthorId = EXCLUDED.AuthorId, CookTime = EXCLUDED.CookTime, " +
+                "PrepTime = EXCLUDED.PrepTime, TotalTime = EXCLUDED.TotalTime, DatePublished = EXCLUDED.DatePublished, " +
+                "Description = EXCLUDED.Description, RecipeCategory = EXCLUDED.RecipeCategory, " +
+                "AggregatedRating = EXCLUDED.AggregatedRating, ReviewCount = EXCLUDED.ReviewCount, " +
+                "Calories = EXCLUDED.Calories, FatContent = EXCLUDED.FatContent, " +
+                "SaturatedFatContent = EXCLUDED.SaturatedFatContent, CholesterolContent = EXCLUDED.CholesterolContent, " +
+                "SodiumContent = EXCLUDED.SodiumContent, CarbohydrateContent = EXCLUDED.CarbohydrateContent, " +
+                "FiberContent = EXCLUDED.FiberContent, SugarContent = EXCLUDED.SugarContent, " +
+                "ProteinContent = EXCLUDED.ProteinContent, RecipeServings = EXCLUDED.RecipeServings, " +
+                "RecipeYield = EXCLUDED.RecipeYield";
+        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement ps, int i) throws SQLException {
+                RecipeRecord recipe = recipes.get(i);
+                ps.setLong(1, recipe.getRecipeId());
+                ps.setString(2, recipe.getName());
+                ps.setLong(3, recipe.getAuthorId());
+                ps.setString(4, recipe.getCookTime());
+                ps.setString(5, recipe.getPrepTime());
+                ps.setString(6, recipe.getTotalTime());
+                ps.setTimestamp(7, recipe.getDatePublished());
+                ps.setString(8, recipe.getDescription());
+                ps.setString(9, recipe.getRecipeCategory());
+                ps.setObject(10, recipe.getAggregatedRating());
+                ps.setObject(11, recipe.getReviewCount());
+                ps.setObject(12, recipe.getCalories());
+                ps.setObject(13, recipe.getFatContent());
+                ps.setObject(14, recipe.getSaturatedFatContent());
+                ps.setObject(15, recipe.getCholesterolContent());
+                ps.setObject(16, recipe.getSodiumContent());
+                ps.setObject(17, recipe.getCarbohydrateContent());
+                ps.setObject(18, recipe.getFiberContent());
+                ps.setObject(19, recipe.getSugarContent());
+                ps.setObject(20, recipe.getProteinContent());
+                // 修复：将 int 类型的 servings 转换为 String 以匹配 VARCHAR 字段类型
+                ps.setString(21, String.valueOf(recipe.getRecipeServings()));
+                ps.setString(22, recipe.getRecipeYield());
+            }
+
+            @Override
+            public int getBatchSize() {
+                return recipes.size();
+            }
+        });
+    }
+
+    private void batchInsertRecipeIngredients(List<RecipeRecord> recipes) {
+        List<Object[]> ingredients = new ArrayList<>();
+        for (RecipeRecord recipe : recipes) {
+            String[] parts = recipe.getRecipeIngredientParts();
+            if (parts == null || parts.length == 0) {
+                continue;
+            }
+            for (String part : parts) {
+                if (part == null || part.isBlank()) {
+                    continue;
+                }
+                ingredients.add(new Object[]{recipe.getRecipeId(), part});
+            }
+        }
+        if (ingredients.isEmpty()) {
+            return;
+        }
+        jdbcTemplate.batchUpdate(
+                "INSERT INTO recipe_ingredients (RecipeId, IngredientPart) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                ingredients);
+    }
+
+    private void batchInsertReviews(List<ReviewRecord> reviews) {
+        if (reviews.isEmpty()) {
+            return;
+        }
+        String sql = "INSERT INTO reviews (ReviewId, RecipeId, AuthorId, Rating, Review, DateSubmitted, DateModified) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (ReviewId) DO UPDATE SET " +
+                "RecipeId = EXCLUDED.RecipeId, AuthorId = EXCLUDED.AuthorId, Rating = EXCLUDED.Rating, " +
+                "Review = EXCLUDED.Review, DateSubmitted = EXCLUDED.DateSubmitted, DateModified = EXCLUDED.DateModified";
+        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement ps, int i) throws SQLException {
+                ReviewRecord review = reviews.get(i);
+                ps.setLong(1, review.getReviewId());
+                ps.setLong(2, review.getRecipeId());
+                ps.setLong(3, review.getAuthorId());
+                ps.setObject(4, review.getRating());
+                ps.setString(5, review.getReview());
+                ps.setTimestamp(6, review.getDateSubmitted());
+                ps.setTimestamp(7, review.getDateModified());
+            }
+
+            @Override
+            public int getBatchSize() {
+                return reviews.size();
+            }
+        });
+    }
+
+    private void batchInsertReviewLikes(List<ReviewRecord> reviews) {
+        List<Object[]> likes = new ArrayList<>();
+        for (ReviewRecord review : reviews) {
+            long[] likedUsers = review.getLikes();
+            if (likedUsers == null || likedUsers.length == 0) {
+                continue;
+            }
+            for (long userId : likedUsers) {
+                if (userId <= 0) {
+                    continue;
+                }
+                likes.add(new Object[]{review.getReviewId(), userId});
+            }
+        }
+        if (likes.isEmpty()) {
+            return;
+        }
+        jdbcTemplate.batchUpdate(
+                "INSERT INTO review_likes (ReviewId, AuthorId) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                likes);
+    }
+
+    private void truncateTables() {
+        jdbcTemplate.execute("TRUNCATE TABLE review_likes, reviews, recipe_ingredients, recipes, user_follows, users RESTART IDENTITY CASCADE");
+    }
 
     private void createTables() {
         String[] createTableSQLs = {
-                // 创建users表
                 "CREATE TABLE IF NOT EXISTS users (" +
                         "    AuthorId BIGINT PRIMARY KEY, " +
                         "    AuthorName VARCHAR(255) NOT NULL, " +
@@ -78,8 +259,6 @@ public class DatabaseServiceImpl implements DatabaseService {
                         "    Password VARCHAR(255), " +
                         "    IsDeleted BOOLEAN DEFAULT FALSE" +
                         ")",
-
-                // 创建recipes表
                 "CREATE TABLE IF NOT EXISTS recipes (" +
                         "    RecipeId BIGINT PRIMARY KEY, " +
                         "    Name VARCHAR(500) NOT NULL, " +
@@ -105,8 +284,6 @@ public class DatabaseServiceImpl implements DatabaseService {
                         "    RecipeYield VARCHAR(100), " +
                         "    FOREIGN KEY (AuthorId) REFERENCES users(AuthorId)" +
                         ")",
-
-                // 创建reviews表
                 "CREATE TABLE IF NOT EXISTS reviews (" +
                         "    ReviewId BIGINT PRIMARY KEY, " +
                         "    RecipeId BIGINT NOT NULL, " +
@@ -118,16 +295,12 @@ public class DatabaseServiceImpl implements DatabaseService {
                         "    FOREIGN KEY (RecipeId) REFERENCES recipes(RecipeId), " +
                         "    FOREIGN KEY (AuthorId) REFERENCES users(AuthorId)" +
                         ")",
-
-                // 创建recipe_ingredients表
                 "CREATE TABLE IF NOT EXISTS recipe_ingredients (" +
                         "    RecipeId BIGINT, " +
                         "    IngredientPart VARCHAR(500), " +
                         "    PRIMARY KEY (RecipeId, IngredientPart), " +
                         "    FOREIGN KEY (RecipeId) REFERENCES recipes(RecipeId)" +
                         ")",
-
-                // 创建review_likes表
                 "CREATE TABLE IF NOT EXISTS review_likes (" +
                         "    ReviewId BIGINT, " +
                         "    AuthorId BIGINT, " +
@@ -135,8 +308,6 @@ public class DatabaseServiceImpl implements DatabaseService {
                         "    FOREIGN KEY (ReviewId) REFERENCES reviews(ReviewId), " +
                         "    FOREIGN KEY (AuthorId) REFERENCES users(AuthorId)" +
                         ")",
-
-                // 创建user_follows表
                 "CREATE TABLE IF NOT EXISTS user_follows (" +
                         "    FollowerId BIGINT, " +
                         "    FollowingId BIGINT, " +
@@ -146,27 +317,13 @@ public class DatabaseServiceImpl implements DatabaseService {
                         "    CHECK (FollowerId != FollowingId)" +
                         ")"
         };
-
         for (String sql : createTableSQLs) {
             jdbcTemplate.execute(sql);
         }
     }
 
-
-
-    /*
-     * The following code is just a quick example of using jdbc datasource.
-     * Practically, the code interacts with database is usually written in a DAO layer.
-     *
-     * Reference: [Data Access Object pattern](https://www.baeldung.com/java-dao-pattern)
-     */
-
     @Override
     public void drop() {
-        // You can use the default drop script provided by us in most cases,
-        // but if it doesn't work properly, you may need to modify it.
-        // This method will delete all the tables in the public schema.
-
         String sql = "DO $$\n" +
                 "DECLARE\n" +
                 "    tables CURSOR FOR\n" +
@@ -179,7 +336,6 @@ public class DatabaseServiceImpl implements DatabaseService {
                 "        EXECUTE 'DROP TABLE IF EXISTS ' || QUOTE_IDENT(t.tablename) || ' CASCADE;';\n" +
                 "    END LOOP;\n" +
                 "END $$;\n";
-
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.executeUpdate();
@@ -191,13 +347,11 @@ public class DatabaseServiceImpl implements DatabaseService {
     @Override
     public Integer sum(int a, int b) {
         String sql = "SELECT ?+?";
-
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, a);
             stmt.setInt(2, b);
             log.info("SQL: {}", stmt);
-
             ResultSet rs = stmt.executeQuery();
             rs.next();
             return rs.getInt(1);
