@@ -3,55 +3,344 @@ package io.sustc.service.impl;
 import io.sustc.dto.*;
 import io.sustc.service.RecipeService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional ;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Duration;
 import java.util.*;
 
 @Service
 @Slf4j
 public class RecipeServiceImpl implements RecipeService {
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Override
     public String getNameFromID(long id) {
-        return null;
+        String sql = "SELECT Name FROM recipes WHERE RecipeId = ?";
+        try {
+            return jdbcTemplate.queryForObject(sql, String.class, id);
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
     }
 
     @Override
     public RecipeRecord getRecipeById(long recipeId) {
-        return null;
+        String sql = "SELECT r.*, u.AuthorName FROM recipes r JOIN users u ON r.AuthorId = u.AuthorId WHERE r.RecipeId = ?";
+        try {
+            RecipeRecord record = jdbcTemplate.queryForObject(sql, (rs, rowNum) -> mapToRecipeRecord(rs), recipeId);
+            if (record != null) {
+                record.setRecipeIngredientParts(getIngredients(recipeId));
+            }
+            return record;
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
     }
-
 
     @Override
     public PageResult<RecipeRecord> searchRecipes(String keyword, String category, Double minRating,
                                                   Integer page, Integer size, String sort) {
-        return null;
+        if (page < 1 || size <= 0) {
+            throw new IllegalArgumentException("Invalid page or size");
+        }
+
+        StringBuilder sqlBuilder = new StringBuilder("SELECT r.*, u.AuthorName FROM recipes r JOIN users u ON r.AuthorId = u.AuthorId WHERE 1=1");
+        List<Object> params = new ArrayList<>();
+
+        if (keyword != null && !keyword.isEmpty()) {
+            sqlBuilder.append(" AND (LOWER(r.Name) LIKE ? OR LOWER(r.Description) LIKE ?)");
+            String pattern = "%" + keyword.toLowerCase() + "%";
+            params.add(pattern);
+            params.add(pattern);
+        }
+
+        if (category != null && !category.isEmpty()) {
+            sqlBuilder.append(" AND r.RecipeCategory = ?");
+            params.add(category);
+        }
+
+        if (minRating != null) {
+            sqlBuilder.append(" AND r.AggregatedRating >= ?");
+            params.add(minRating);
+        }
+
+        // Count total
+        String countSql = "SELECT COUNT(*) FROM (" + sqlBuilder.toString() + ") as temp";
+        Long total = jdbcTemplate.queryForObject(countSql, Long.class, params.toArray());
+        if (total == null) total = 0L;
+
+        // Sort
+        if (sort != null) {
+            switch (sort) {
+                case "rating_desc":
+                    sqlBuilder.append(" ORDER BY r.AggregatedRating DESC");
+                    break;
+                case "date_desc":
+                    sqlBuilder.append(" ORDER BY r.DatePublished DESC");
+                    break;
+                case "calories_asc":
+                    sqlBuilder.append(" ORDER BY r.Calories ASC");
+                    break;
+                default:
+                    // No sort or invalid sort
+                    break;
+            }
+        }
+
+        // Pagination
+        sqlBuilder.append(" LIMIT ? OFFSET ?");
+        params.add(size);
+        params.add((page - 1) * size);
+
+        List<RecipeRecord> records = jdbcTemplate.query(sqlBuilder.toString(), (rs, rowNum) -> mapToRecipeRecord(rs), params.toArray());
+
+        // Populate ingredients for each record
+        for (RecipeRecord record : records) {
+            record.setRecipeIngredientParts(getIngredients(record.getRecipeId()));
+        }
+
+        return new PageResult<>(records, page, size, total);
     }
 
     @Override
+    @Transactional
     public long createRecipe(RecipeRecord dto, AuthInfo auth) {
-        return 0;
+        validateUser(auth);
+        if (dto.getName() == null || dto.getName().isEmpty()) {
+            throw new IllegalArgumentException("Recipe name cannot be empty");
+        }
+
+        // Generate ID
+        Long maxId = jdbcTemplate.queryForObject("SELECT MAX(RecipeId) FROM recipes", Long.class);
+        long newId = (maxId == null ? 0 : maxId) + 1;
+
+        String sql = "INSERT INTO recipes (RecipeId, Name, AuthorId, CookTime, PrepTime, TotalTime, DatePublished, " +
+                "Description, RecipeCategory, AggregatedRating, ReviewCount, Calories, FatContent, SaturatedFatContent, " +
+                "CholesterolContent, SodiumContent, CarbohydrateContent, FiberContent, SugarContent, ProteinContent, " +
+                "RecipeServings, RecipeYield) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+
+        // Calculate TotalTime if possible
+        String totalTime = dto.getTotalTime();
+        if (dto.getCookTime() != null && dto.getPrepTime() != null) {
+            try {
+                Duration cook = Duration.parse(dto.getCookTime());
+                Duration prep = Duration.parse(dto.getPrepTime());
+                totalTime = cook.plus(prep).toString();
+            } catch (Exception ignored) {}
+        }
+
+        jdbcTemplate.update(sql,
+                newId,
+                dto.getName(),
+                auth.getAuthorId(),
+                dto.getCookTime(),
+                dto.getPrepTime(),
+                totalTime,
+                new java.sql.Timestamp(System.currentTimeMillis()), // DatePublished
+                dto.getDescription(),
+                dto.getRecipeCategory(),
+                0.0f, // AggregatedRating
+                0, // ReviewCount
+                dto.getCalories(),
+                dto.getFatContent(),
+                dto.getSaturatedFatContent(),
+                dto.getCholesterolContent(),
+                dto.getSodiumContent(),
+                dto.getCarbohydrateContent(),
+                dto.getFiberContent(),
+                dto.getSugarContent(),
+                dto.getProteinContent(),
+                String.valueOf(dto.getRecipeServings()),
+                dto.getRecipeYield()
+        );
+
+        if (dto.getRecipeIngredientParts() != null) {
+            String ingSql = "INSERT INTO recipe_ingredients (RecipeId, IngredientPart) VALUES (?, ?)";
+            for (String part : dto.getRecipeIngredientParts()) {
+                jdbcTemplate.update(ingSql, newId, part);
+            }
+        }
+
+        return newId;
     }
 
     @Override
+    @Transactional
     public void deleteRecipe(long recipeId, AuthInfo auth) {
+        validateUser(auth);
+        checkOwnership(recipeId, auth.getAuthorId());
 
+        // Delete dependencies
+        // 1. Review Likes
+        jdbcTemplate.update("DELETE FROM review_likes WHERE ReviewId IN (SELECT ReviewId FROM reviews WHERE RecipeId = ?)", recipeId);
+        // 2. Reviews
+        jdbcTemplate.update("DELETE FROM reviews WHERE RecipeId = ?", recipeId);
+        // 3. Ingredients
+        jdbcTemplate.update("DELETE FROM recipe_ingredients WHERE RecipeId = ?", recipeId);
+        // 4. Recipe
+        jdbcTemplate.update("DELETE FROM recipes WHERE RecipeId = ?", recipeId);
     }
 
     @Override
+    @Transactional
     public void updateTimes(AuthInfo auth, long recipeId, String cookTimeIso, String prepTimeIso) {
+        validateUser(auth);
+        checkOwnership(recipeId, auth.getAuthorId());
+
+        if (cookTimeIso == null && prepTimeIso == null) {
+            return;
+        }
+
+        // Fetch current times if one is null
+        String currentCookTime = null;
+        String currentPrepTime = null;
+
+        try {
+            Map<String, Object> times = jdbcTemplate.queryForMap("SELECT CookTime, PrepTime FROM recipes WHERE RecipeId = ?", recipeId);
+            currentCookTime = (String) times.get("CookTime");
+            currentPrepTime = (String) times.get("PrepTime");
+        } catch (EmptyResultDataAccessException e) {
+             throw new IllegalArgumentException("Recipe not found");
+        }
+
+        String newCookTime = cookTimeIso != null ? cookTimeIso : currentCookTime;
+        String newPrepTime = prepTimeIso != null ? prepTimeIso : currentPrepTime;
+
+        Duration cook = Duration.ZERO;
+        Duration prep = Duration.ZERO;
+
+        try {
+            if (newCookTime != null && !newCookTime.isEmpty()) cook = Duration.parse(newCookTime);
+            if (newPrepTime != null && !newPrepTime.isEmpty()) prep = Duration.parse(newPrepTime);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid duration format");
+        }
+
+        if (cook.isNegative() || prep.isNegative()) {
+            throw new IllegalArgumentException("Duration cannot be negative");
+        }
+
+        String totalTime = cook.plus(prep).toString();
+
+        jdbcTemplate.update("UPDATE recipes SET CookTime = ?, PrepTime = ?, TotalTime = ? WHERE RecipeId = ?",
+                newCookTime, newPrepTime, totalTime, recipeId);
     }
 
     @Override
     public Map<String, Object> getClosestCaloriePair() {
-        return null;
+        String sql = "SELECT r1.RecipeId as id1, r2.RecipeId as id2, r1.Calories as cal1, r2.Calories as cal2, " +
+                "ABS(CAST(r1.Calories AS NUMERIC) - CAST(r2.Calories AS NUMERIC)) as diff " +
+                "FROM recipes r1, recipes r2 " +
+                "WHERE r1.RecipeId < r2.RecipeId " +
+                "AND r1.Calories IS NOT NULL AND r2.Calories IS NOT NULL " +
+                "ORDER BY diff ASC, r1.RecipeId ASC, r2.RecipeId ASC " +
+                "LIMIT 1";
+
+        try {
+            return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("RecipeA", rs.getLong("id1"));
+                map.put("RecipeB", rs.getLong("id2"));
+                map.put("CaloriesA", rs.getDouble("cal1"));
+                map.put("CaloriesB", rs.getDouble("cal2"));
+                map.put("Difference", rs.getDouble("diff"));
+                return map;
+            });
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
     }
 
     @Override
     public List<Map<String, Object>> getTop3MostComplexRecipesByIngredients() {
-        return null;
+        String sql = "SELECT r.RecipeId, r.Name, COUNT(ri.IngredientPart) as cnt " +
+                "FROM recipes r JOIN recipe_ingredients ri ON r.RecipeId = ri.RecipeId " +
+                "GROUP BY r.RecipeId, r.Name " +
+                "ORDER BY cnt DESC, r.RecipeId ASC " +
+                "LIMIT 3";
+
+        return jdbcTemplate.query(sql, (rs, rowNum) -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("RecipeId", rs.getLong("RecipeId"));
+            map.put("Name", rs.getString("Name"));
+            map.put("IngredientCount", rs.getInt("cnt"));
+            return map;
+        });
     }
 
+    private void validateUser(AuthInfo auth) {
+        if (auth == null) {
+            throw new SecurityException("Auth info is null");
+        }
+        String sql = "SELECT IsDeleted FROM users WHERE AuthorId = ?";
+        try {
+            Boolean isDeleted = jdbcTemplate.queryForObject(sql, Boolean.class, auth.getAuthorId());
+            if (isDeleted == null || isDeleted) {
+                throw new SecurityException("User is deleted or does not exist");
+            }
+        } catch (EmptyResultDataAccessException e) {
+            throw new SecurityException("User does not exist");
+        }
+    }
 
+    private void checkOwnership(long recipeId, long authorId) {
+        String sql = "SELECT AuthorId FROM recipes WHERE RecipeId = ?";
+        try {
+            Long ownerId = jdbcTemplate.queryForObject(sql, Long.class, recipeId);
+            if (ownerId == null || ownerId != authorId) {
+                throw new SecurityException("User is not the owner of the recipe");
+            }
+        } catch (EmptyResultDataAccessException e) {
+            throw new SecurityException("Recipe not found");
+        }
+    }
+
+    private String[] getIngredients(long recipeId) {
+        String sql = "SELECT IngredientPart FROM recipe_ingredients WHERE RecipeId = ? ORDER BY IngredientPart ASC";
+        List<String> ingredients = jdbcTemplate.queryForList(sql, String.class, recipeId);
+        return ingredients.toArray(new String[0]);
+    }
+
+    private RecipeRecord mapToRecipeRecord(ResultSet rs) throws SQLException {
+        RecipeRecord record = new RecipeRecord();
+        record.setRecipeId(rs.getLong("RecipeId"));
+        record.setName(rs.getString("Name"));
+        record.setAuthorId(rs.getLong("AuthorId"));
+        record.setAuthorName(rs.getString("AuthorName"));
+        record.setCookTime(rs.getString("CookTime"));
+        record.setPrepTime(rs.getString("PrepTime"));
+        record.setTotalTime(rs.getString("TotalTime"));
+        record.setDatePublished(rs.getTimestamp("DatePublished"));
+        record.setDescription(rs.getString("Description"));
+        record.setRecipeCategory(rs.getString("RecipeCategory"));
+        record.setAggregatedRating(rs.getFloat("AggregatedRating"));
+        record.setReviewCount(rs.getInt("ReviewCount"));
+        record.setCalories(rs.getFloat("Calories"));
+        record.setFatContent(rs.getFloat("FatContent"));
+        record.setSaturatedFatContent(rs.getFloat("SaturatedFatContent"));
+        record.setCholesterolContent(rs.getFloat("CholesterolContent"));
+        record.setSodiumContent(rs.getFloat("SodiumContent"));
+        record.setCarbohydrateContent(rs.getFloat("CarbohydrateContent"));
+        record.setFiberContent(rs.getFloat("FiberContent"));
+        record.setSugarContent(rs.getFloat("SugarContent"));
+        record.setProteinContent(rs.getFloat("ProteinContent"));
+        try {
+            String servings = rs.getString("RecipeServings");
+            if (servings != null && !servings.isEmpty() && !servings.equals("null")) {
+                 record.setRecipeServings(Integer.parseInt(servings));
+            }
+        } catch (NumberFormatException e) {
+            // ignore
+        }
+        record.setRecipeYield(rs.getString("RecipeYield"));
+        return record;
+    }
 }
