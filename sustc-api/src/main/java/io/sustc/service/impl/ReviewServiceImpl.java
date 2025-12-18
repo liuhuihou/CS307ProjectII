@@ -1,4 +1,3 @@
-// Java
 package io.sustc.service.impl;
 
 import io.sustc.dto.AuthInfo;
@@ -9,14 +8,12 @@ import io.sustc.service.ReviewService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -30,17 +27,16 @@ public class ReviewServiceImpl implements ReviewService {
     public long addReview(AuthInfo auth, long recipeId, int rating, String review) {
         validateActiveUser(auth);
         ensureRecipeExists(recipeId);
-
-        if (rating < 1 || rating > 5) {
-            throw new IllegalArgumentException("rating must be in [1,5]");
-        }
+        if (rating < 1 || rating > 5) throw new IllegalArgumentException("rating must be in [1,5]");
 
         Timestamp now = new Timestamp(System.currentTimeMillis());
-        String sql = "INSERT INTO reviews (ReviewId, RecipeId, AuthorId, Rating, Review, DateSubmitted, DateModified) " +
-                "VALUES (DEFAULT, ?, ?, ?, ?, ?, ?) RETURNING ReviewId";
-        Long reviewId = jdbcTemplate.queryForObject(sql, Long.class, recipeId, auth.getAuthorId(), rating, review, now, now);
+        Long reviewId = jdbcTemplate.queryForObject(
+                "INSERT INTO reviews (ReviewId, RecipeId, AuthorId, Rating, Review, DateSubmitted, DateModified) " +
+                        "VALUES (DEFAULT, ?, ?, ?, ?, ?, ?) RETURNING ReviewId",
+                Long.class, recipeId, auth.getAuthorId(), rating, review, now, now);
+
         refreshRecipeAggregatedRating(recipeId);
-        return reviewId;
+        return reviewId == null ? 0L : reviewId;
     }
 
     @Override
@@ -49,14 +45,10 @@ public class ReviewServiceImpl implements ReviewService {
         validateActiveUser(auth);
         ensureRecipeExists(recipeId);
         ensureReviewBelongsToRecipe(reviewId, recipeId);
-        if (rating < 1 || rating > 5) {
-            throw new IllegalArgumentException("rating must be in [1,5]");
-        }
-        // 仅作者可编辑
+        if (rating < 1 || rating > 5) throw new IllegalArgumentException("rating must be in [1,5]");
+
         Long authorId = jdbcTemplate.queryForObject("SELECT AuthorId FROM reviews WHERE ReviewId = ?", Long.class, reviewId);
-        if (authorId == null || !authorId.equals(auth.getAuthorId())) {
-            throw new SecurityException("not review author");
-        }
+        if (authorId == null || !authorId.equals(auth.getAuthorId())) throw new SecurityException("not review author");
 
         Timestamp now = new Timestamp(System.currentTimeMillis());
         jdbcTemplate.update("UPDATE reviews SET Rating = ?, Review = ?, DateModified = ? WHERE ReviewId = ?",
@@ -73,9 +65,7 @@ public class ReviewServiceImpl implements ReviewService {
         ensureReviewBelongsToRecipe(reviewId, recipeId);
 
         Long authorId = jdbcTemplate.queryForObject("SELECT AuthorId FROM reviews WHERE ReviewId = ?", Long.class, reviewId);
-        if (authorId == null || !authorId.equals(auth.getAuthorId())) {
-            throw new SecurityException("not review author");
-        }
+        if (authorId == null || !authorId.equals(auth.getAuthorId())) throw new SecurityException("not review author");
 
         jdbcTemplate.update("DELETE FROM review_likes WHERE ReviewId = ?", reviewId);
         jdbcTemplate.update("DELETE FROM reviews WHERE ReviewId = ?", reviewId);
@@ -87,15 +77,10 @@ public class ReviewServiceImpl implements ReviewService {
     @Transactional
     public long likeReview(AuthInfo auth, long reviewId) {
         validateActiveUser(auth);
-        // 检查评论存在
         Long reviewAuthor = jdbcTemplate.queryForObject("SELECT AuthorId FROM reviews WHERE ReviewId = ?", Long.class, reviewId);
-        if (reviewAuthor == null) {
-            throw new IllegalArgumentException("review not exists");
-        }
-        if (reviewAuthor.equals(auth.getAuthorId())) {
-            throw new SecurityException("cannot like own review");
-        }
-        // 幂等插入
+        if (reviewAuthor == null) throw new IllegalArgumentException("review not exists");
+        if (reviewAuthor.equals(auth.getAuthorId())) throw new SecurityException("cannot like own review");
+
         jdbcTemplate.update("INSERT INTO review_likes (ReviewId, AuthorId) VALUES (?, ?) ON CONFLICT DO NOTHING",
                 reviewId, auth.getAuthorId());
 
@@ -106,20 +91,16 @@ public class ReviewServiceImpl implements ReviewService {
     @Transactional
     public long unlikeReview(AuthInfo auth, long reviewId) {
         validateActiveUser(auth);
-        // 检查评论存在
         Integer exists = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM reviews WHERE ReviewId = ?", Integer.class, reviewId);
-        if (exists == null || exists == 0) {
-            throw new IllegalArgumentException("review not exists");
-        }
+        if (exists == null || exists == 0) throw new IllegalArgumentException("review not exists");
+
         jdbcTemplate.update("DELETE FROM review_likes WHERE ReviewId = ? AND AuthorId = ?", reviewId, auth.getAuthorId());
         return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM review_likes WHERE ReviewId = ?", Long.class, reviewId);
     }
 
     @Override
     public PageResult<ReviewRecord> listByRecipe(long recipeId, int page, int size, String sort) {
-        if (page < 1 || size <= 0) {
-            throw new IllegalArgumentException("invalid page/size");
-        }
+        if (page < 1 || size <= 0) throw new IllegalArgumentException("invalid page/size");
         ensureRecipeExists(recipeId);
 
         String orderBy = "DateModified DESC";
@@ -142,7 +123,7 @@ public class ReviewServiceImpl implements ReviewService {
                         .review(rs.getString("Review"))
                         .dateSubmitted(rs.getTimestamp("DateSubmitted"))
                         .dateModified(rs.getTimestamp("DateModified"))
-                        .likes(new long[0]) // 可按需扩展返回点赞用户
+                        .likes(new long[0])
                         .build(),
                 recipeId, size, (page - 1) * size);
 
@@ -160,17 +141,21 @@ public class ReviewServiceImpl implements ReviewService {
     @Transactional
     public RecipeRecord refreshRecipeAggregatedRating(long recipeId) {
         ensureRecipeExists(recipeId);
-        // 计算平均值与计数
-        Double avg = jdbcTemplate.queryForObject(
-                "SELECT ROUND(AVG(Rating)::numeric, 2) FROM reviews WHERE RecipeId = ?", Double.class, recipeId);
-        Integer cnt = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM reviews WHERE RecipeId = ?", Integer.class, recipeId);
 
-        // 更新 recipes
-        jdbcTemplate.update("UPDATE recipes SET AggregatedRating = ?, ReviewCount = ? WHERE RecipeId = ?",
-                avg, cnt, recipeId);
+        Map<String, Object> agg = jdbcTemplate.queryForMap(
+                "SELECT ROUND(AVG(Rating)::numeric, 2) AS avg_rating, COUNT(*) AS cnt FROM reviews WHERE RecipeId = ?",
+                recipeId);
 
-        // 返回最新 RecipeRecord（只填充与本方法相关的关键字段，其它可按需补齐）
+        Number cnt = (Number) agg.get("cnt");
+        Number avg = (Number) agg.get("avg_rating");
+
+        if (cnt == null || cnt.longValue() == 0L) {
+            jdbcTemplate.update("UPDATE recipes SET AggregatedRating = NULL, ReviewCount = 0 WHERE RecipeId = ?", recipeId);
+        } else {
+            jdbcTemplate.update("UPDATE recipes SET AggregatedRating = ?, ReviewCount = ? WHERE RecipeId = ?",
+                    avg, cnt.longValue(), recipeId);
+        }
+
         return jdbcTemplate.queryForObject(
                 "SELECT RecipeId, Name, AuthorId, CookTime, PrepTime, TotalTime, DatePublished, Description, " +
                         "       RecipeCategory, AggregatedRating, ReviewCount, Calories, FatContent, SaturatedFatContent, " +
@@ -205,35 +190,24 @@ public class ReviewServiceImpl implements ReviewService {
         );
     }
 
-    // -------------- 私有辅助方法，占位，需结合你的用户/认证设计完善 --------------
-
     private void validateActiveUser(AuthInfo auth) {
-        if (auth == null || auth.getAuthorId() <= 0) {
-            throw new IllegalArgumentException("invalid auth");
-        }
-        // 示例校验：用户存在且未删除
+        if (auth == null || auth.getAuthorId() <= 0) throw new IllegalArgumentException("invalid auth");
         Integer ok = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM users WHERE AuthorId = ? AND COALESCE(IsDeleted, FALSE) = FALSE",
                 Integer.class, auth.getAuthorId());
-        if (ok == null || ok == 0) {
-            throw new SecurityException("inactive or non-existent user");
-        }
+        if (ok == null || ok == 0) throw new SecurityException("inactive or non-existent user");
     }
 
     private void ensureRecipeExists(long recipeId) {
         Integer cnt = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM recipes WHERE RecipeId = ?", Integer.class, recipeId);
-        if (cnt == null || cnt == 0) {
-            throw new IllegalArgumentException("recipe not exists");
-        }
+        if (cnt == null || cnt == 0) throw new IllegalArgumentException("recipe not exists");
     }
 
     private void ensureReviewBelongsToRecipe(long reviewId, long recipeId) {
         Integer cnt = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM reviews WHERE ReviewId = ? AND RecipeId = ?",
                 Integer.class, reviewId, recipeId);
-        if (cnt == null || cnt == 0) {
-            throw new IllegalArgumentException("review not belongs to recipe");
-        }
+        if (cnt == null || cnt == 0) throw new IllegalArgumentException("review not belongs to recipe");
     }
 
     private int parseIntSafe(String s) {
