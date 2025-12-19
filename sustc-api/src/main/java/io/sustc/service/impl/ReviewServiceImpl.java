@@ -11,6 +11,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +25,7 @@ import java.util.Map;
 public class ReviewServiceImpl implements ReviewService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final DataSource dataSource;
 
     @Override
     @Transactional
@@ -71,6 +76,7 @@ public class ReviewServiceImpl implements ReviewService {
         jdbcTemplate.update("DELETE FROM reviews WHERE ReviewId = ?", reviewId);
 
         refreshRecipeAggregatedRating(recipeId);
+        resetPkSequenceToNext("reviews");
     }
 
     @Override
@@ -99,35 +105,62 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PageResult<ReviewRecord> listByRecipe(long recipeId, int page, int size, String sort) {
         if (page < 1 || size <= 0) throw new IllegalArgumentException("invalid page/size");
         ensureRecipeExists(recipeId);
 
-        String orderBy = "DateModified DESC";
-        if ("likes_desc".equalsIgnoreCase(sort)) {
-            orderBy = "likes_count DESC, DateModified DESC, ReviewId ASC";
+        String normalized = normalizeSort(sort);
+
+        String orderBy;
+        if ("likes_desc".equals(normalized)) {
+            orderBy = "x.likes_count DESC, r.DateModified DESC, r.ReviewId ASC";
+        } else { // date_desc 或未知/空白：默认 date_desc
+            orderBy = "r.DateModified DESC, r.ReviewId ASC";
         }
 
-        String base = "SELECT r.ReviewId, r.RecipeId, r.AuthorId, r.Rating, r.Review, r.DateSubmitted, r.DateModified, " +
-                "       COALESCE(l.cnt, 0) AS likes_count " +
-                "FROM reviews r " +
-                "LEFT JOIN (SELECT ReviewId, COUNT(*) AS cnt FROM review_likes GROUP BY ReviewId) l ON r.ReviewId = l.ReviewId " +
-                "WHERE r.RecipeId = ? ";
-        String pageSql = base + "ORDER BY " + orderBy + " LIMIT ? OFFSET ?";
-        List<ReviewRecord> items = jdbcTemplate.query(pageSql,
-                (rs, i) -> ReviewRecord.builder()
-                        .reviewId(rs.getLong("ReviewId"))
-                        .recipeId(rs.getLong("RecipeId"))
-                        .authorId(rs.getLong("AuthorId"))
-                        .rating(rs.getInt("Rating"))
-                        .review(rs.getString("Review"))
-                        .dateSubmitted(rs.getTimestamp("DateSubmitted"))
-                        .dateModified(rs.getTimestamp("DateModified"))
-                        .likes(new long[0])
-                        .build(),
-                recipeId, size, (page - 1) * size);
+        int offset = (page - 1) * size;
 
-        Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM reviews WHERE RecipeId = ?", Long.class, recipeId);
+        String sql =
+                "SELECT r.*, x.likes_count " +
+                        "FROM reviews r " +
+                        "JOIN ( " +
+                        "  SELECT rv.ReviewId, COUNT(rl.AuthorId) AS likes_count " +
+                        "  FROM reviews rv " +
+                        "  LEFT JOIN review_likes rl ON rl.ReviewId = rv.ReviewId " +
+                        "  WHERE rv.RecipeId = ? " +
+                        "  GROUP BY rv.ReviewId " +
+                        ") x ON x.ReviewId = r.ReviewId " +
+                        "WHERE r.RecipeId = ? " +
+                        "ORDER BY " + orderBy + " " +
+                        "LIMIT ? OFFSET ?";
+
+        List<ReviewRecord> items = jdbcTemplate.query(sql, (rs, rowNum) -> {
+            long reviewId = rs.getLong("ReviewId");
+
+            List<Long> likerIds = jdbcTemplate.queryForList(
+                    "SELECT AuthorId FROM review_likes WHERE ReviewId = ? ORDER BY AuthorId ASC",
+                    Long.class,
+                    reviewId
+            );
+
+            return ReviewRecord.builder()
+                    .reviewId(reviewId)
+                    .recipeId(rs.getLong("RecipeId"))
+                    .authorId(rs.getLong("AuthorId"))
+                    .rating(rs.getInt("Rating"))
+                    .review(rs.getString("Review"))
+                    .dateSubmitted(rs.getTimestamp("DateSubmitted"))
+                    .dateModified(rs.getTimestamp("DateModified"))
+                    .likes(likerIds.stream().mapToLong(Long::longValue).toArray())
+                    .build();
+        }, recipeId, recipeId, size, offset);
+
+        Long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM reviews WHERE RecipeId = ?",
+                Long.class,
+                recipeId
+        );
 
         return PageResult.<ReviewRecord>builder()
                 .items(items)
@@ -135,6 +168,23 @@ public class ReviewServiceImpl implements ReviewService {
                 .size(size)
                 .total(total == null ? 0 : total)
                 .build();
+    }
+
+    private String normalizeSort(String sort) {
+        String s = (sort == null ? "" : sort.trim().toLowerCase());
+
+        if (s.isBlank()) return "date_desc";
+
+        // 兼容常见误输入
+        if ("data_desc".equals(s)) return "date_desc";
+        if ("like_desc".equals(s)) return "likes_desc";
+        if ("likes_descs".equals(s)) return "likes_desc";
+
+        if ("date_desc".equals(s)) return "date_desc";
+        if ("likes_desc".equals(s)) return "likes_desc";
+
+        // 未知 sort：默认 date_desc
+        return "date_desc";
     }
 
     @Override
@@ -180,7 +230,7 @@ public class ReviewServiceImpl implements ReviewService {
                         .cholesterolContent(rs.getFloat("CholesterolContent"))
                         .sodiumContent(rs.getFloat("SodiumContent"))
                         .carbohydrateContent(rs.getFloat("CarbohydrateContent"))
-                        .fiberContent(rs.getFloat("FiberContent"))
+                        .fiberContent(parseIntSafe(rs.getString("FiberContent")))
                         .sugarContent(rs.getFloat("SugarContent"))
                         .proteinContent(rs.getFloat("ProteinContent"))
                         .recipeServings(parseIntSafe(rs.getString("RecipeServings")))
@@ -216,5 +266,64 @@ public class ReviewServiceImpl implements ReviewService {
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    private void resetPkSequenceToNext(String tableName) {
+        String pkColumn = resolvePrimaryKeyColumn(tableName);
+
+        String tableRef = qualifyForPg(tableName);
+        String colRef = quoteIdentIfNeeded(pkColumn);
+
+        Long maxId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(" + colRef + "), 0) FROM " + tableRef, Long.class);
+        long nextValue = (maxId == null ? 1L : maxId + 1L);
+
+        String seqName = jdbcTemplate.queryForObject(
+                "SELECT pg_get_serial_sequence(?, ?)::text", String.class, tableRef, colRef);
+
+        if (seqName == null) {
+            return;
+        }
+
+        jdbcTemplate.queryForObject(
+                "SELECT setval(?, ?, FALSE)", Long.class, seqName, nextValue
+        );
+    }
+
+    private String resolvePrimaryKeyColumn(String tableName) {
+        try (Connection c = dataSource.getConnection()) {
+            DatabaseMetaData meta = c.getMetaData();
+            try (ResultSet rs = meta.getPrimaryKeys(c.getCatalog(), null, tableName)) {
+                if (rs.next()) {
+                    return rs.getString("COLUMN_NAME");
+                }
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to resolve primary key column for table: " + tableName, e);
+        }
+        throw new IllegalStateException("No primary key found for table: " + tableName);
+    }
+
+    private boolean needsQuoting(String ident) {
+        if (ident == null || ident.isEmpty()) return true;
+        return !ident.matches("[a-z_][a-z0-9_]*");
+    }
+
+    private String quoteIdent(String ident) {
+        return "\"" + ident.replace("\"", "\"\"") + "\"";
+    }
+
+    private String quoteIdentIfNeeded(String ident) {
+        return needsQuoting(ident) ? quoteIdent(ident) : ident;
+    }
+
+    private String qualifyForPg(String name) {
+        String[] parts = name.split("\\.");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) sb.append('.');
+            sb.append(quoteIdentIfNeeded(parts[i]));
+        }
+        return sb.toString();
     }
 }
