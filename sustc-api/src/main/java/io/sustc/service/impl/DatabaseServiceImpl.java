@@ -47,20 +47,29 @@ public class DatabaseServiceImpl implements DatabaseService {
         Objects.requireNonNull(userRecords, "userRecords cannot be null");
         Objects.requireNonNull(recipeRecords, "recipeRecords cannot be null");
 
+        log.info("Starting data import...");
         createTables();
+        log.info("Tables created.");
         truncateTables();
+        log.info("Tables truncated.");
 
+        log.info("Inserting {} users...", userRecords.size());
         batchInsertUsers(userRecords);
+        log.info("Inserting user follows...");
         batchInsertUserFollows(userRecords);
 
+        log.info("Inserting {} recipes...", recipeRecords.size());
         batchInsertRecipes(recipeRecords);
+        log.info("Inserting recipe ingredients...");
         batchInsertRecipeIngredients(recipeRecords);
 
+        log.info("Inserting {} reviews...", reviewRecords.size());
         batchInsertReviews(reviewRecords);
 
         // 关键：导入历史 reviewid 后推进 Identity 序列到 MAX(reviewid)
         resetReviewIdSequence();
 
+        log.info("Inserting review likes...");
         batchInsertReviewLikes(reviewRecords);
 
         log.info("Imported {} users, {} recipes and {} reviews.",
