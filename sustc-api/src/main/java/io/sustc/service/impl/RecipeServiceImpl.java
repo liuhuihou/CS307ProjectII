@@ -13,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -102,9 +103,23 @@ public class RecipeServiceImpl implements RecipeService {
 
         List<RecipeRecord> records = jdbcTemplate.query(sqlBuilder.toString(), (rs, rowNum) -> mapToRecipeRecord(rs), params.toArray());
 
-        // Populate ingredients for each record
-        for (RecipeRecord record : records) {
-            record.setRecipeIngredientParts(getIngredients(record.getRecipeId()));
+        // Batch populate ingredients to avoid N+1 problem
+        if (!records.isEmpty()) {
+            List<Long> recipeIds = records.stream().map(RecipeRecord::getRecipeId).collect(Collectors.toList());
+            String inSql = String.join(",", Collections.nCopies(recipeIds.size(), "?"));
+            String ingSql = String.format("SELECT RecipeId, IngredientPart FROM recipe_ingredients WHERE RecipeId IN (%s) ORDER BY RecipeId, IngredientPart ASC", inSql);
+
+            Map<Long, List<String>> ingredientsMap = new HashMap<>();
+            jdbcTemplate.query(ingSql, rs -> {
+                long rid = rs.getLong("RecipeId");
+                String part = rs.getString("IngredientPart");
+                ingredientsMap.computeIfAbsent(rid, k -> new ArrayList<>()).add(part);
+            }, recipeIds.toArray());
+
+            for (RecipeRecord record : records) {
+                List<String> parts = ingredientsMap.get(record.getRecipeId());
+                record.setRecipeIngredientParts(parts != null ? parts.toArray(new String[0]) : new String[0]);
+            }
         }
 
         return new PageResult<>(records, page, size, total);
@@ -236,21 +251,32 @@ public class RecipeServiceImpl implements RecipeService {
 
     @Override
     public Map<String, Object> getClosestCaloriePair() {
-        String sql = "SELECT r1.RecipeId as id1, r2.RecipeId as id2, r1.Calories as cal1, r2.Calories as cal2, " +
-                "ABS(CAST(r1.Calories AS NUMERIC) - CAST(r2.Calories AS NUMERIC)) as diff " +
-                "FROM recipes r1, recipes r2 " +
-                "WHERE r1.RecipeId < r2.RecipeId " +
-                "AND r1.Calories IS NOT NULL AND r2.Calories IS NOT NULL " +
-                "ORDER BY diff ASC, r1.RecipeId ASC, r2.RecipeId ASC " +
+        // Optimized using window functions to avoid O(N^2) cross join
+        String sql = "WITH SortedRecipes AS (" +
+                "    SELECT RecipeId, Calories, " +
+                "           LAG(Calories) OVER (ORDER BY Calories ASC, RecipeId ASC) as PrevCalories, " +
+                "           LAG(RecipeId) OVER (ORDER BY Calories ASC, RecipeId ASC) as PrevRecipeId " +
+                "    FROM recipes " +
+                "    WHERE Calories IS NOT NULL " +
+                ") " +
+                "SELECT " +
+                "    CASE WHEN RecipeId < PrevRecipeId THEN RecipeId ELSE PrevRecipeId END as RecipeA, " +
+                "    CASE WHEN RecipeId < PrevRecipeId THEN PrevRecipeId ELSE RecipeId END as RecipeB, " +
+                "    CASE WHEN RecipeId < PrevRecipeId THEN Calories ELSE PrevCalories END as CaloriesA, " +
+                "    CASE WHEN RecipeId < PrevRecipeId THEN PrevCalories ELSE Calories END as CaloriesB, " +
+                "    ABS(CAST(Calories AS NUMERIC) - CAST(PrevCalories AS NUMERIC)) as diff " +
+                "FROM SortedRecipes " +
+                "WHERE PrevCalories IS NOT NULL " +
+                "ORDER BY diff ASC, RecipeA ASC, RecipeB ASC " +
                 "LIMIT 1";
 
         try {
             return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
                 Map<String, Object> map = new HashMap<>();
-                map.put("RecipeA", rs.getLong("id1"));
-                map.put("RecipeB", rs.getLong("id2"));
-                map.put("CaloriesA", rs.getDouble("cal1"));
-                map.put("CaloriesB", rs.getDouble("cal2"));
+                map.put("RecipeA", rs.getLong("RecipeA"));
+                map.put("RecipeB", rs.getLong("RecipeB"));
+                map.put("CaloriesA", rs.getDouble("CaloriesA"));
+                map.put("CaloriesB", rs.getDouble("CaloriesB"));
                 map.put("Difference", rs.getDouble("diff"));
                 return map;
             });
