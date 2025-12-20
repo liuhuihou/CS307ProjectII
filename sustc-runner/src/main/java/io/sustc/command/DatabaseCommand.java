@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
+import org.springframework.shell.standard.ShellOption;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvException;
 
@@ -27,9 +28,13 @@ import java.sql.Timestamp;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.Period;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
-import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -168,7 +173,153 @@ public class DatabaseCommand {
         return res;
     }
 
+    // User Service Commands
 
+    @ShellMethod(key = "user register", value = "Register user: name gender password")
+    public long userRegister(String name, String gender, String password) {
+        RegisterUserReq req = new RegisterUserReq();
+        req.setName(name);
+        if (gender.equalsIgnoreCase("Male")) {
+            req.setGender(RegisterUserReq.Gender.MALE);
+        } else if (gender.equalsIgnoreCase("Female")) {
+            req.setGender(RegisterUserReq.Gender.FEMALE);
+        } else {
+            req.setGender(RegisterUserReq.Gender.UNKNOWN);
+        }
+        req.setPassword(password);
+        req.setBirthday("2000/01/01"); // Default birthday for testing
+        long id = userService.register(req);
+        System.out.println("Registered User ID: " + id);
+        return id;
+    }
+
+    @ShellMethod(key = "user delete", value = "Delete user account: userId password")
+    public void userDelete(long userId, String password) {
+        AuthInfo auth = new AuthInfo(userId, password);
+        boolean result = userService.deleteAccount(auth, userId);
+        System.out.println("Delete result: " + result);
+    }
+
+    @ShellMethod(key = "user login", value = "Login: userId password")
+    public long userLogin(long userId, String password) {
+        AuthInfo auth = new AuthInfo(userId, password);
+        long id = userService.login(auth);
+        System.out.println("Login result (User ID): " + id);
+        return id;
+    }
+
+    @ShellMethod(key = "user info", value = "Get user info: userId")
+    public void userInfo(long userId) {
+        UserRecord user = userService.getById(userId);
+        System.out.println("User Info: " + user);
+    }
+
+    @ShellMethod(key = "user follow", value = "Follow user: userId password followeeId")
+    public void userFollow(long userId, String password, long followeeId) {
+        AuthInfo auth = new AuthInfo(userId, password);
+        boolean result = userService.follow(auth, followeeId);
+        System.out.println("Follow result: " + result);
+    }
+
+    @ShellMethod(key = "user update", value = "Update user profile: userId password [gender] [birthday]")
+    public void userUpdate(long userId, String password,
+                           @ShellOption(defaultValue = ShellOption.NULL) String gender,
+                           @ShellOption(defaultValue = ShellOption.NULL) String birthday) {
+        AuthInfo auth = new AuthInfo(userId, password);
+        Integer age = null;
+        if (birthday != null) {
+            LocalDate birthDate = parseDate(birthday);
+            if (birthDate != null) {
+                age = Period.between(birthDate, LocalDate.now()).getYears();
+            } else {
+                System.out.println("Invalid birthday format. Use yyyy-MM-dd or yyyy/MM/dd");
+                return;
+            }
+        }
+        userService.updateProfile(auth, gender, age);
+        System.out.println("User profile updated");
+    }
+
+    private LocalDate parseDate(String dateStr) {
+        if (dateStr == null) return null;
+        try {
+            return LocalDate.parse(dateStr);
+        } catch (DateTimeParseException e) {
+            try {
+                return LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("yyyy/MM/dd"));
+            } catch (DateTimeParseException e2) {
+                return null;
+            }
+        }
+    }
+
+    // Recipe Service Commands
+
+    @ShellMethod(key = "recipe get", value = "Get recipe: recipeId")
+    public void recipeGet(long recipeId) {
+        RecipeRecord recipe = recipeService.getRecipeById(recipeId);
+        System.out.println("Recipe: " + recipe);
+    }
+
+    @ShellMethod(key = "recipe search", value = "Search recipes: [keyword] [category] [minRating] [page] [size] [sort]")
+    public void recipeSearch(
+            @ShellOption(defaultValue = ShellOption.NULL) String keyword,
+            @ShellOption(defaultValue = ShellOption.NULL) String category,
+            @ShellOption(defaultValue = ShellOption.NULL) Double minRating,
+            @ShellOption(defaultValue = "1") int page,
+            @ShellOption(defaultValue = "5") int size,
+            @ShellOption(defaultValue = ShellOption.NULL) String sort) {
+
+        System.out.println("Searching with: kw='" + keyword + "', cat='" + category + "', rate>=" + minRating + ", sort='" + sort + "'");
+        try {
+            PageResult<RecipeRecord> result = recipeService.searchRecipes(keyword, category, minRating, page, size, sort);
+            System.out.println("Total found: " + result.getTotal());
+            System.out.println("Page: " + result.getPage() + ", Size: " + result.getSize());
+            result.getItems().forEach(r ->
+                System.out.println(String.format("ID: %d | Name: %-20s | Rate: %.1f | Cat: %s",
+                    r.getRecipeId(),
+                    r.getName().length() > 20 ? r.getName().substring(0, 17) + "..." : r.getName(),
+                    r.getAggregatedRating(),
+                    r.getRecipeCategory()))
+            );
+        } catch (Exception e) {
+            System.out.println("Search failed: " + e.getMessage());
+        }
+    }
+
+    @ShellMethod(key = "recipe create", value = "Create recipe: name userId")
+    public long recipeCreate(String name, long userId) {
+        AuthInfo auth = new AuthInfo(userId, null);
+        RecipeRecord dto = new RecipeRecord();
+        dto.setName(name);
+        dto.setDescription("Test Description");
+        dto.setRecipeCategory("Test Category");
+        dto.setCookTime("PT30M");
+        dto.setPrepTime("PT15M");
+        long id = recipeService.createRecipe(dto, auth);
+        System.out.println("Created Recipe ID: " + id);
+        return id;
+    }
+
+    @ShellMethod(key = "recipe delete", value = "Delete recipe: recipeId userId")
+    public void recipeDelete(long recipeId, long userId) {
+        AuthInfo auth = new AuthInfo(userId, null);
+        recipeService.deleteRecipe(recipeId, auth);
+        System.out.println("Deleted Recipe ID: " + recipeId);
+    }
+
+    @ShellMethod(key = "recipe closest", value = "Get closest calorie pair")
+    public void recipeClosest() {
+        Map<String, Object> result = recipeService.getClosestCaloriePair();
+        System.out.println("Closest Pair: " + result);
+    }
+
+    @ShellMethod(key = "recipe top3", value = "Get top 3 complex recipes")
+    public void recipeTop3() {
+        List<Map<String, Object>> result = recipeService.getTop3MostComplexRecipesByIngredients();
+        System.out.println("Top 3 Complex Recipes:");
+        result.forEach(System.out::println);
+    }
 
     private static String[] parseCsvList(String listStr) {
         if (listStr == null || listStr.trim().isEmpty() || "null".equalsIgnoreCase(listStr.trim())) {
@@ -435,3 +586,4 @@ public class DatabaseCommand {
 
 
 }
+
