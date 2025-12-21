@@ -249,10 +249,19 @@ public class ReviewServiceImpl implements ReviewService {
 
     private void validateActiveUser(AuthInfo auth) {
         if (auth == null || auth.getAuthorId() <= 0) throw new IllegalArgumentException("invalid auth");
-        Integer ok = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM users WHERE AuthorId = ? AND COALESCE(IsDeleted, FALSE) = FALSE",
-                Integer.class, auth.getAuthorId());
-        if (ok == null || ok == 0) throw new SecurityException("inactive or non-existent user");
+        try {
+            Map<String, Object> user = jdbcTemplate.queryForMap(
+                    "SELECT Password, IsDeleted FROM users WHERE AuthorId = ?", auth.getAuthorId());
+
+            Boolean isDeleted = (Boolean) user.get("IsDeleted");
+            if (isDeleted != null && isDeleted) throw new SecurityException("inactive or non-existent user");
+
+            String pwd = (String) user.get("Password");
+            if (pwd == null || !pwd.equals(auth.getPassword())) throw new SecurityException("invalid auth");
+
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            throw new SecurityException("inactive or non-existent user");
+        }
     }
 
     private void ensureRecipeExists(long recipeId) {
