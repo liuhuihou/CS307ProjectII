@@ -86,25 +86,30 @@ public class DatabaseServiceImpl implements DatabaseService {
                 "AuthorName = EXCLUDED.AuthorName, Gender = EXCLUDED.Gender, Age = EXCLUDED.Age, " +
                 "Followers = EXCLUDED.Followers, Following = EXCLUDED.Following, Password = EXCLUDED.Password, " +
                 "IsDeleted = EXCLUDED.IsDeleted";
-        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-            @Override
-            public void setValues(PreparedStatement ps, int i) throws SQLException {
-                UserRecord user = users.get(i);
-                ps.setLong(1, user.getAuthorId());
-                ps.setString(2, user.getAuthorName());
-                ps.setString(3, user.getGender());
-                ps.setObject(4, user.getAge());
-                ps.setObject(5, user.getFollowers());
-                ps.setObject(6, user.getFollowing());
-                ps.setString(7, user.getPassword());
-                ps.setBoolean(8, user.isDeleted());
-            }
 
-            @Override
-            public int getBatchSize() {
-                return users.size();
-            }
-        });
+        int batchSize = 1000;
+        for (int i = 0; i < users.size(); i += batchSize) {
+            List<UserRecord> batch = users.subList(i, Math.min(i + batchSize, users.size()));
+            jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+                @Override
+                public void setValues(PreparedStatement ps, int i) throws SQLException {
+                    UserRecord user = batch.get(i);
+                    ps.setLong(1, user.getAuthorId());
+                    ps.setString(2, user.getAuthorName());
+                    ps.setString(3, user.getGender());
+                    ps.setObject(4, user.getAge());
+                    ps.setObject(5, user.getFollowers());
+                    ps.setObject(6, user.getFollowing());
+                    ps.setString(7, user.getPassword());
+                    ps.setBoolean(8, user.isDeleted());
+                }
+
+                @Override
+                public int getBatchSize() {
+                    return batch.size();
+                }
+            });
+        }
     }
 
     private void batchInsertUserFollows(List<UserRecord> users) {
@@ -125,9 +130,14 @@ public class DatabaseServiceImpl implements DatabaseService {
         if (relations.isEmpty()) {
             return;
         }
-        jdbcTemplate.batchUpdate(
-                "INSERT INTO user_follows (FollowerId, FollowingId) VALUES (?, ?) ON CONFLICT DO NOTHING",
-                relations);
+
+        int batchSize = 1000;
+        for (int i = 0; i < relations.size(); i += batchSize) {
+            List<Object[]> batch = relations.subList(i, Math.min(i + batchSize, relations.size()));
+            jdbcTemplate.batchUpdate(
+                    "INSERT INTO user_follows (FollowerId, FollowingId) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                    batch);
+        }
     }
 
     private void batchInsertRecipes(List<RecipeRecord> recipes) {
@@ -149,39 +159,44 @@ public class DatabaseServiceImpl implements DatabaseService {
                 "FiberContent = EXCLUDED.FiberContent, SugarContent = EXCLUDED.SugarContent, " +
                 "ProteinContent = EXCLUDED.ProteinContent, RecipeServings = EXCLUDED.RecipeServings, " +
                 "RecipeYield = EXCLUDED.RecipeYield";
-        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-            @Override
-            public void setValues(PreparedStatement ps, int i) throws SQLException {
-                RecipeRecord recipe = recipes.get(i);
-                ps.setLong(1, recipe.getRecipeId());
-                ps.setString(2, recipe.getName());
-                ps.setLong(3, recipe.getAuthorId());
-                ps.setString(4, recipe.getCookTime());
-                ps.setString(5, recipe.getPrepTime());
-                ps.setString(6, recipe.getTotalTime());
-                ps.setTimestamp(7, recipe.getDatePublished());
-                ps.setString(8, recipe.getDescription());
-                ps.setString(9, recipe.getRecipeCategory());
-                ps.setObject(10, recipe.getAggregatedRating());
-                ps.setObject(11, recipe.getReviewCount());
-                ps.setObject(12, recipe.getCalories());
-                ps.setObject(13, recipe.getFatContent());
-                ps.setObject(14, recipe.getSaturatedFatContent());
-                ps.setObject(15, recipe.getCholesterolContent());
-                ps.setObject(16, recipe.getSodiumContent());
-                ps.setObject(17, recipe.getCarbohydrateContent());
-                ps.setObject(18, recipe.getFiberContent());
-                ps.setObject(19, recipe.getSugarContent());
-                ps.setObject(20, recipe.getProteinContent());
-                ps.setString(21, String.valueOf(recipe.getRecipeServings()));
-                ps.setString(22, recipe.getRecipeYield());
-            }
 
-            @Override
-            public int getBatchSize() {
-                return recipes.size();
-            }
-        });
+        int batchSize = 1000;
+        for (int i = 0; i < recipes.size(); i += batchSize) {
+            List<RecipeRecord> batch = recipes.subList(i, Math.min(i + batchSize, recipes.size()));
+            jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+                @Override
+                public void setValues(PreparedStatement ps, int i) throws SQLException {
+                    RecipeRecord recipe = batch.get(i);
+                    ps.setLong(1, recipe.getRecipeId());
+                    ps.setString(2, recipe.getName());
+                    ps.setLong(3, recipe.getAuthorId());
+                    ps.setString(4, recipe.getCookTime());
+                    ps.setString(5, recipe.getPrepTime());
+                    ps.setString(6, recipe.getTotalTime());
+                    ps.setTimestamp(7, recipe.getDatePublished());
+                    ps.setString(8, recipe.getDescription());
+                    ps.setString(9, recipe.getRecipeCategory());
+                    ps.setObject(10, recipe.getAggregatedRating());
+                    ps.setObject(11, recipe.getReviewCount());
+                    ps.setObject(12, recipe.getCalories());
+                    ps.setObject(13, recipe.getFatContent());
+                    ps.setObject(14, recipe.getSaturatedFatContent());
+                    ps.setObject(15, recipe.getCholesterolContent());
+                    ps.setObject(16, recipe.getSodiumContent());
+                    ps.setObject(17, recipe.getCarbohydrateContent());
+                    ps.setObject(18, recipe.getFiberContent());
+                    ps.setObject(19, recipe.getSugarContent());
+                    ps.setObject(20, recipe.getProteinContent());
+                    ps.setString(21, String.valueOf(recipe.getRecipeServings()));
+                    ps.setString(22, recipe.getRecipeYield());
+                }
+
+                @Override
+                public int getBatchSize() {
+                    return batch.size();
+                }
+            });
+        }
     }
 
     private void batchInsertRecipeIngredients(List<RecipeRecord> recipes) {
@@ -201,9 +216,14 @@ public class DatabaseServiceImpl implements DatabaseService {
         if (ingredients.isEmpty()) {
             return;
         }
-        jdbcTemplate.batchUpdate(
-                "INSERT INTO recipe_ingredients (RecipeId, IngredientPart) VALUES (?, ?) ON CONFLICT DO NOTHING",
-                ingredients);
+
+        int batchSize = 1000;
+        for (int i = 0; i < ingredients.size(); i += batchSize) {
+            List<Object[]> batch = ingredients.subList(i, Math.min(i + batchSize, ingredients.size()));
+            jdbcTemplate.batchUpdate(
+                    "INSERT INTO recipe_ingredients (RecipeId, IngredientPart) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                    batch);
+        }
     }
 
     private void batchInsertReviews(List<ReviewRecord> reviews) {
@@ -214,24 +234,29 @@ public class DatabaseServiceImpl implements DatabaseService {
                 "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (ReviewId) DO UPDATE SET " +
                 "RecipeId = EXCLUDED.RecipeId, AuthorId = EXCLUDED.AuthorId, Rating = EXCLUDED.Rating, " +
                 "Review = EXCLUDED.Review, DateSubmitted = EXCLUDED.DateSubmitted, DateModified = EXCLUDED.DateModified";
-        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-            @Override
-            public void setValues(PreparedStatement ps, int i) throws SQLException {
-                ReviewRecord review = reviews.get(i);
-                ps.setLong(1, review.getReviewId());
-                ps.setLong(2, review.getRecipeId());
-                ps.setLong(3, review.getAuthorId());
-                ps.setObject(4, review.getRating());
-                ps.setString(5, review.getReview());
-                ps.setTimestamp(6, review.getDateSubmitted());
-                ps.setTimestamp(7, review.getDateModified());
-            }
 
-            @Override
-            public int getBatchSize() {
-                return reviews.size();
-            }
-        });
+        int batchSize = 1000;
+        for (int i = 0; i < reviews.size(); i += batchSize) {
+            List<ReviewRecord> batch = reviews.subList(i, Math.min(i + batchSize, reviews.size()));
+            jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+                @Override
+                public void setValues(PreparedStatement ps, int i) throws SQLException {
+                    ReviewRecord review = batch.get(i);
+                    ps.setLong(1, review.getReviewId());
+                    ps.setLong(2, review.getRecipeId());
+                    ps.setLong(3, review.getAuthorId());
+                    ps.setObject(4, review.getRating());
+                    ps.setString(5, review.getReview());
+                    ps.setTimestamp(6, review.getDateSubmitted());
+                    ps.setTimestamp(7, review.getDateModified());
+                }
+
+                @Override
+                public int getBatchSize() {
+                    return batch.size();
+                }
+            });
+        }
     }
 
     private void batchInsertReviewLikes(List<ReviewRecord> reviews) {
@@ -251,9 +276,14 @@ public class DatabaseServiceImpl implements DatabaseService {
         if (likes.isEmpty()) {
             return;
         }
-        jdbcTemplate.batchUpdate(
-                "INSERT INTO review_likes (ReviewId, AuthorId) VALUES (?, ?) ON CONFLICT DO NOTHING",
-                likes);
+
+        int batchSize = 1000;
+        for (int i = 0; i < likes.size(); i += batchSize) {
+            List<Object[]> batch = likes.subList(i, Math.min(i + batchSize, likes.size()));
+            jdbcTemplate.batchUpdate(
+                    "INSERT INTO review_likes (ReviewId, AuthorId) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                    batch);
+        }
     }
 
     private void truncateTables() {
