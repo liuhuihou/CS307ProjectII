@@ -83,8 +83,13 @@ public class ReviewServiceImpl implements ReviewService {
     @Transactional
     public long likeReview(AuthInfo auth, long reviewId) {
         validateActiveUser(auth);
-        Long reviewAuthor = jdbcTemplate.queryForObject("SELECT AuthorId FROM reviews WHERE ReviewId = ?", Long.class, reviewId);
-        if (reviewAuthor == null) throw new IllegalArgumentException("review not exists");
+        Long reviewAuthor;
+        try {
+            reviewAuthor = jdbcTemplate.queryForObject("SELECT AuthorId FROM reviews WHERE ReviewId = ?", Long.class, reviewId);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            throw new IllegalArgumentException("review not exists");
+        }
+
         if (reviewAuthor.equals(auth.getAuthorId())) throw new SecurityException("cannot like own review");
 
         jdbcTemplate.update("INSERT INTO review_likes (ReviewId, AuthorId) VALUES (?, ?) ON CONFLICT DO NOTHING",
@@ -230,7 +235,7 @@ public class ReviewServiceImpl implements ReviewService {
                         .cholesterolContent(rs.getFloat("CholesterolContent"))
                         .sodiumContent(rs.getFloat("SodiumContent"))
                         .carbohydrateContent(rs.getFloat("CarbohydrateContent"))
-                        .fiberContent(parseIntSafe(rs.getString("FiberContent")))
+                        .fiberContent(rs.getFloat("FiberContent"))
                         .sugarContent(rs.getFloat("SugarContent"))
                         .proteinContent(rs.getFloat("ProteinContent"))
                         .recipeServings(parseIntSafe(rs.getString("RecipeServings")))
