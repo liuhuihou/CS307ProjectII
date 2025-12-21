@@ -127,8 +127,9 @@ public class ReviewServiceImpl implements ReviewService {
         int offset = (page - 1) * size;
 
         String sql =
-                "SELECT r.*, x.likes_count " +
+                "SELECT r.*, u.AuthorName, x.likes_count " +
                         "FROM reviews r " +
+                        "JOIN users u ON r.AuthorId = u.AuthorId " +
                         "JOIN ( " +
                         "  SELECT rv.ReviewId, COUNT(rl.AuthorId) AS likes_count " +
                         "  FROM reviews rv " +
@@ -153,6 +154,7 @@ public class ReviewServiceImpl implements ReviewService {
                     .reviewId(reviewId)
                     .recipeId(rs.getLong("RecipeId"))
                     .authorId(rs.getLong("AuthorId"))
+                    .authorName(rs.getString("AuthorName"))
                     .rating(rs.getInt("Rating"))
                     .review(rs.getString("Review"))
                     .dateSubmitted(rs.getTimestamp("DateSubmitted"))
