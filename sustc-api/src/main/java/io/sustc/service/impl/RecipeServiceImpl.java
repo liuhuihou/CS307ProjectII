@@ -82,18 +82,20 @@ public class RecipeServiceImpl implements RecipeService {
         if (sort != null) {
             switch (sort) {
                 case "rating_desc":
-                    sqlBuilder.append(" ORDER BY r.AggregatedRating DESC");
+                    sqlBuilder.append(" ORDER BY r.AggregatedRating DESC, r.RecipeId DESC");
                     break;
                 case "date_desc":
-                    sqlBuilder.append(" ORDER BY r.DatePublished DESC");
+                    sqlBuilder.append(" ORDER BY r.DatePublished DESC, r.RecipeId DESC");
                     break;
                 case "calories_asc":
-                    sqlBuilder.append(" ORDER BY r.Calories ASC");
+                    sqlBuilder.append(" ORDER BY r.Calories ASC, r.RecipeId DESC");
                     break;
                 default:
-                    // No sort or invalid sort
+                    sqlBuilder.append(" ORDER BY r.RecipeId DESC");
                     break;
             }
+        } else {
+            sqlBuilder.append(" ORDER BY r.RecipeId DESC");
         }
 
         // Pagination
