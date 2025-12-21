@@ -120,7 +120,12 @@ public class RecipeServiceImpl implements RecipeService {
 
             for (RecipeRecord record : records) {
                 List<String> parts = ingredientsMap.get(record.getRecipeId());
-                record.setRecipeIngredientParts(parts != null ? parts.toArray(new String[0]) : new String[0]);
+                if (parts != null) {
+                    parts.sort(String.CASE_INSENSITIVE_ORDER);
+                    record.setRecipeIngredientParts(parts.toArray(new String[0]));
+                } else {
+                    record.setRecipeIngredientParts(new String[0]);
+                }
             }
         }
 
@@ -334,6 +339,7 @@ public class RecipeServiceImpl implements RecipeService {
     private String[] getIngredients(long recipeId) {
         String sql = "SELECT IngredientPart FROM recipe_ingredients WHERE RecipeId = ? ORDER BY IngredientPart ASC";
         List<String> ingredients = jdbcTemplate.queryForList(sql, String.class, recipeId);
+        ingredients.sort(String.CASE_INSENSITIVE_ORDER);
         return ingredients.toArray(new String[0]);
     }
 
