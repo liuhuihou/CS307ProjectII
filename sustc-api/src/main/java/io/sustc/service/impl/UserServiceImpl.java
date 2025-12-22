@@ -129,9 +129,9 @@ public class UserServiceImpl implements UserService {
 
         try {
             Boolean isDeleted = jdbcTemplate.queryForObject("SELECT IsDeleted FROM users WHERE AuthorId = ?", Boolean.class, followeeId);
-            if (isDeleted == null || isDeleted) return false;
+            if (isDeleted == null || isDeleted) throw new SecurityException("Followee not found or deleted");
         } catch (EmptyResultDataAccessException e) {
-            return false;
+            throw new SecurityException("Followee not found");
         }
 
         Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM user_follows WHERE FollowerId = ? AND FollowingId = ?", Integer.class, auth.getAuthorId(), followeeId);
