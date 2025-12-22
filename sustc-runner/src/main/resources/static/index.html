@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="zh">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SUSTC 食谱系统 - 完整功能版</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 24px auto; padding: 0 12px; }
+        .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+        input, button, textarea, select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        textarea { width: 100%; min-height: 90px; }
+        .box { border: 1px solid #ddd; padding: 16px; border-radius: 6px; margin: 12px 0; }
+        .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .muted { color: #666; font-size: 0.9em; }
+        .err { color: #b00; }
+        .ok { color: #070; }
+        pre { background: #f6f8fa; border: 1px solid #ddd; padding: 12px; overflow: auto; }
+        ul { padding-left: 18px; margin: 8px 0; }
+        li { margin: 6px 0; cursor: pointer; padding: 4px; }
+        li:hover { background: #f0f0f0; }
+        .tab { display: none; }
+        .tab.active { display: block; }
+        .tab-buttons { display: flex; gap: 8px; margin: 16px 0; }
+        .tab-button { padding: 8px 16px; border: 1px solid #ddd; background: #f5f5f5; cursor: pointer; }
+        .tab-button.active { background: #007bff; color: white; }
+        .user-info { background: #e8f4fd; padding: 12px; border-radius: 4px; margin: 8px 0; }
+        .recipe-item { border: 1px solid #eee; padding: 12px; margin: 8px 0; border-radius: 4px; }
+        .comment-item { border-left: 3px solid #007bff; padding: 8px 12px; margin: 8px 0; background: #f9f9f9; }
+        .like-btn { background: none; border: none; cursor: pointer; color: #666; }
+        .like-btn.liked { color: #e74c3c; }
+        .loading { opacity: 0.6; pointer-events: none; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+<h1>SUSTC 食谱系统 - 完整功能版</h1>
+
+<!-- 认证区域 -->
+<div class="box" id="authBox">
+    <h3>用户认证</h3>
+
+    <!-- 注册表单 -->
+    <div class="row">
+        <b>注册新用户</b>
+        <input id="regName" placeholder="用户名" />
+        <input id="regPassword" placeholder="密码" type="password" />
+        <select id="regGender">
+            <option value="">选择性别</option>
+            <option value="male">男</option>
+            <option value="female">女</option>
+        </select>
+        <input id="regBirthday" placeholder="生日 (YYYY-MM-DD)" />
+        <button id="registerBtn">注册</button>
+    </div>
+
+    <!-- 登录表单 -->
+    <div class="row">
+        <b>登录</b>
+        <input id="username" placeholder="用户名" />
+        <input id="password" placeholder="密码" type="password" />
+        <button id="loginBtn">登录</button>
+        <span id="authStatus" class="muted">未登录</span>
+        <button id="logoutBtn" style="display:none;">退出登录</button>
+    </div>
+
+    <!-- 用户信息 -->
+    <div id="userInfo" class="user-info" style="display:none;">
+        <div class="row">
+            <b>当前用户:</b>
+            <span id="currentUserName">-</span>
+            <span id="currentUserId">-</span>
+        </div>
+        <div class="row">
+            <input id="updateGender" placeholder="新性别 (可选)" />
+            <input id="updateAge" placeholder="新年龄 (可选)" type="number" />
+            <button id="updateProfileBtn">更新资料</button>
+            <button id="deleteAccountBtn" class="err">删除账户</button>
+        </div>
+    </div>
+</div>
+
+<!-- 标签页导航 -->
+<div class="tab-buttons">
+    <button class="tab-button active" data-tab="recipes">食谱管理</button>
+    <button class="tab-button" data-tab="users">用户管理</button>
+    <button class="tab-button" data-tab="feed">动态流</button>
+    <button class="tab-button" data-tab="api">API测试</button>
+</div>
+
+<!-- 食谱管理标签页 -->
+<div id="recipes" class="tab active">
+    <div class="cols">
+        <div class="box">
+            <h3>食谱列表</h3>
+            <div class="row">
+                <input id="query" placeholder="搜索关键字" />
+                <select id="category">
+                    <option value="">所有分类</option>
+                    <option value="中餐">中餐</option>
+                    <option value="西餐">西餐</option>
+                    <option value="日料">日料</option>
+                </select>
+                <button id="searchBtn">搜索</button>
+                <button id="createRecipeBtn">创建新食谱</button>
+            </div>
+            <ul id="recipeList"></ul>
+        </div>
+
+        <div class="box">
+            <h3>食谱详情</h3>
+            <div id="recipeDetail">
+                <div class="muted">请选择食谱查看详情</div>
+            </div>
+
+            <div style="margin-top: 16px;">
+                <h4>评论管理</h4>
+                <ul id="commentList"></ul>
+
+                <div style="margin-top: 12px;">
+                    <textarea id="commentContent" placeholder="写评论..."></textarea>
+                    <div class="row">
+                        <select id="commentRating">
+                            <option value="5">★★★★★</option>
+                            <option value="4">★★★★</option>
+                            <option value="3">★★★</option>
+                            <option value="2">★★</option>
+                            <option value="1">★</option>
+                        </select>
+                        <button id="postCommentBtn">发表评论</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 用户管理标签页 -->
+<div id="users" class="tab">
+    <div class="cols">
+        <div class="box">
+            <h3>用户搜索</h3>
+            <div class="row">
+                <input id="searchUserId" placeholder="用户ID" type="number" />
+                <button id="searchUserBtn">搜索用户</button>
+            </div>
+            <div id="searchedUser" class="user-info"></div>
+        </div>
+
+        <div class="box">
+            <h3>关注管理</h3>
+            <div class="row">
+                <input id="followUserId" placeholder="要关注的用户ID" type="number" />
+                <button id="followBtn">关注/取消关注</button>
+            </div>
+            <div id="followStatus"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 动态流标签页 -->
+<div id="feed" class="tab">
+    <div class="box">
+        <h3>我的动态流</h3>
+        <div class="row">
+            <select id="feedCategory">
+                <option value="">所有分类</option>
+                <option value="中餐">中餐</option>
+                <option value="西餐">西餐</option>
+            </select>
+            <button id="loadFeedBtn">加载动态</button>
+        </div>
+        <div id="feedContent"></div>
+    </div>
+</div>
+
+<!-- API测试标签页 -->
+<div id="api" class="tab">
+    <div class="box">
+        <h3>API测试</h3>
+        <pre id="apiResult">API测试结果将显示在这里...</pre>
+        <div class="row">
+            <button onclick="testUserRegistration()">测试用户注册</button>
+            <button onclick="testUserLogin()">测试用户登录</button>
+            <button onclick="testRecipeSearch()">测试食谱搜索</button>
+        </div>
+    </div>
+</div>
+
+<!-- 创建食谱模态框 -->
+<div id="createRecipeModal" class="box" style="display:none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; z-index: 1000; max-width: 500px;">
+    <h3>创建新食谱</h3>
+    <div class="row">
+        <input id="recipeTitle" placeholder="食谱标题" />
+    </div>
+    <div class="row">
+        <textarea id="recipeDesc" placeholder="食谱描述"></textarea>
+    </div>
+    <div class="row">
+        <textarea id="recipeIngredients" placeholder="食材列表"></textarea>
+    </div>
+    <div class="row">
+        <textarea id="recipeSteps" placeholder="制作步骤"></textarea>
+    </div>
+    <div class="row">
+        <select id="recipeCategory">
+            <option value="">选择分类</option>
+            <option value="中餐">中餐</option>
+            <option value="西餐">西餐</option>
+            <option value="日料">日料</option>
+        </select>
+        <input id="recipeCalories" placeholder="卡路里" type="number" />
+    </div>
+    <div class="row">
+        <button id="submitRecipeBtn">提交</button>
+        <button id="cancelRecipeBtn">取消</button>
+    </div>
+</div>
+
+<script>
+    let token = localStorage.getItem('ui_token') || '';
+    let currentUser = null;
+    let currentRecipeId = null;
+
+    // DOM元素
+    const elements = {
+        authStatus: document.getElementById('authStatus'),
+        userInfo: document.getElementById('userInfo'),
+        currentUserName: document.getElementById('currentUserName'),
+        currentUserId: document.getElementById('currentUserId'),
+        recipeList: document.getElementById('recipeList'),
+        recipeDetail: document.getElementById('recipeDetail'),
+        commentList: document.getElementById('commentList'),
+        logoutBtn: document.getElementById('logoutBtn'),
+        createRecipeModal: document.getElementById('createRecipeModal')
+    };
+
+    // 标签页切换
+    document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(btn.dataset.tab).classList.add('active');
+        });
+    });
+
+    // API调用函数
+    async function callApi(url, options = {}) {
+        const headers = options.headers || {};
+        if (token && !headers['Authorization']) {
+            headers['Authorization'] = 'Bearer ' + token;
+        }
+        if (!headers['Content-Type'] && options.body) {
+            headers['Content-Type'] = 'application/json';
+        }
+
+        try {
+            const res = await fetch(url, { ...options, headers });
+            const text = await res.text();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                data = { raw: text, ok: false, error: '响应不是有效的JSON' };
+            }
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${data.error || data.message || '请求失败'}`);
+            }
+            return data;
+        } catch (error) {
+            console.error('API调用失败:', error);
+            throw error;
+        }
+    }
+
+    // 用户注册
+    async function register() {
+        const name = document.getElementById('regName').value.trim();
+        const password = document.getElementById('regPassword').value;
+        const gender = document.getElementById('regGender').value;
+        const birthday = document.getElementById('regBirthday').value;
+
+        if (!name || !password || !gender || !birthday) {
+            alert('请填写所有必填字段');
+            return;
+        }
+
+        try {
+            const data = await callApi('/ui/auth/register', {
+                method: 'POST',
+                body: JSON.stringify({ name, password, gender, birthday })
+            });
+
+            if (data.ok) {
+                alert('注册成功！用户ID: ' + data.userId);
+                // 自动登录
+                token = data.token;
+                localStorage.setItem('ui_token', token);
+                await loadCurrentUserInfo();
+            } else {
+                alert('注册失败: ' + data.error);
+            }
+        } catch (error) {
+            alert('注册失败: ' + error.message);
+        }
+    }
+
+    // 用户登录
+    async function login() {
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+
+        try {
+            const data = await callApi('/ui/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({ username, password })
+            });
+
+            if (data.ok && data.token) {
+                token = data.token;
+                localStorage.setItem('ui_token', token);
+                await loadCurrentUserInfo();
+                alert('登录成功！');
+            } else {
+                alert('登录失败: ' + (data.error || '未知错误'));
+            }
+        } catch (error) {
+            alert('登录失败: ' + error.message);
+        }
+    }
+
+    // 加载当前用户信息
+    async function loadCurrentUserInfo() {
+        if (!token) return;
+
+        try {
+            // 从token中解析用户ID
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            const userId = payload.sub;
+
+            const data = await callApi(`/ui/users/${userId}`);
+            if (data.ok) {
+                currentUser = data.user;
+                elements.currentUserName.textContent = currentUser.name;
+                elements.currentUserId.textContent = 'ID: ' + currentUser.id;
+                elements.userInfo.style.display = 'block';
+                elements.logoutBtn.style.display = 'inline-block';
+                elements.authStatus.textContent = '已登录';
+                elements.authStatus.className = 'ok';
+            }
+        } catch (error) {
+            console.error('加载用户信息失败:', error);
+        }
+    }
+
+    // 退出登录
+    function logout() {
+        token = '';
+        currentUser = null;
+        localStorage.removeItem('ui_token');
+        elements.userInfo.style.display = 'none';
+        elements.logoutBtn.style.display = 'none';
+        elements.authStatus.textContent = '未登录';
+        elements.authStatus.className = 'muted';
+    }
+
+    // 更新用户资料
+    async function updateProfile() {
+        const gender = document.getElementById('updateGender').value.trim();
+        const age = document.getElementById('updateAge').value;
+
+        try {
+            const data = await callApi('/ui/users/profile', {
+                method: 'PUT',
+                body: JSON.stringify({ gender, age: age ? parseInt(age) : null })
+            });
+
+            if (data.ok) {
+                alert('资料更新成功！');
+                await loadCurrentUserInfo();
+            } else {
+                alert('更新失败: ' + data.error);
+            }
+        } catch (error) {
+            alert('更新失败: ' + error.message);
+        }
+    }
+
+    // 加载食谱列表
+    async function loadRecipes() {
+        const query = document.getElementById('query').value.trim();
+        const category = document.getElementById('category').value;
+
+        let url = '/ui/recipes?page=1&pageSize=20';
+        if (query) url += '&q=' + encodeURIComponent(query);
+        if (category) url += '&category=' + encodeURIComponent(category);
+
+        try {
+            const data = await callApi(url);
+            elements.recipeList.innerHTML = '';
+
+            (data.items || []).forEach(recipe => {
+                const li = document.createElement('li');
+                li.className = 'recipe-item';
+                li.innerHTML = `
+                    <strong>${recipe.title}</strong><br>
+                    <span class="muted">作者: ${recipe.author} | 分类: ${recipe.category} | 评分: ${recipe.rating || '无'}</span>
+                `;
+                li.onclick = () => selectRecipe(recipe.id);
+                elements.recipeList.appendChild(li);
+            });
+        } catch (error) {
+            alert('加载食谱失败: ' + error.message);
+        }
+    }
+
+    // 选择食谱
+    async function selectRecipe(id) {
+        currentRecipeId = id;
+
+        try {
+            const data = await callApi(`/ui/recipes/${id}`);
+            if (data.ok) {
+                elements.recipeDetail.innerHTML = `
+                    <h4>${data.recipe.title}</h4>
+                    <p><strong>描述:</strong> ${data.recipe.description}</p>
+                    <p><strong>分类:</strong> ${data.recipe.category}</p>
+                    <p><strong>食材:</strong> ${data.recipe.ingredients}</p>
+                    <p><strong>步骤:</strong> ${data.recipe.steps}</p>
+                    <p><strong>营养信息:</strong> 卡路里: ${data.recipe.calories || 'N/A'} | 蛋白质: ${data.recipe.protein || 'N/A'} | 脂肪: ${data.recipe.fat || 'N/A'} | 碳水: ${data.recipe.carbs || 'N/A'}</p>
+                `;
+                await loadComments();
+            }
+        } catch (error) {
+            elements.recipeDetail.innerHTML = `<div class="err">加载失败: ${error.message}</div>`;
+        }
+    }
+
+    // 加载评论
+    async function loadComments() {
+        if (!currentRecipeId) return;
+
+        try {
+            const data = await callApi(`/ui/recipes/${currentRecipeId}/comments`);
+            elements.commentList.innerHTML = '';
+
+            (data.items || []).forEach(comment => {
+                const li = document.createElement('li');
+                li.className = 'comment-item';
+                li.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${comment.userName}</strong>
+                            <span style="color: gold;">${'★'.repeat(comment.rating)}</span>
+                        </div>
+                        <button class="like-btn" onclick="likeComment(${comment.id})">❤️ ${comment.likes || 0}</button>
+                    </div>
+                    <div>${comment.content}</div>
+                    <span class="muted">${comment.createdAt}</span>
+                `;
+                elements.commentList.appendChild(li);
+            });
+        } catch (error) {
+            console.error('加载评论失败:', error);
+        }
+    }
+
+    // 点赞评论
+    async function likeComment(reviewId) {
+        try {
+            const data = await callApi(`/ui/comments/${reviewId}/like`, {
+                method: 'POST'
+            });
+            if (data.ok) {
+                await loadComments();
+            }
+        } catch (error) {
+            alert('点赞失败: ' + error.message);
+        }
+    }
+
+    // 发表评论
+    async function postComment() {
+        if (!currentRecipeId) {
+            alert('请先选择食谱');
+            return;
+        }
+
+        const content = document.getElementById('commentContent').value.trim();
+        const rating = document.getElementById('commentRating').value;
+
+        if (!content) {
+            alert('评论内容不能为空');
+            return;
+        }
+
+        try {
+            const data = await callApi(`/ui/recipes/${currentRecipeId}/comments`, {
+                method: 'POST',
+                body: JSON.stringify({ content, rating: parseInt(rating) })
+            });
+
+            if (data.ok) {
+                document.getElementById('commentContent').value = '';
+                await loadComments();
+                alert('评论发表成功！');
+            }
+        } catch (error) {
+            alert('发表评论失败: ' + error.message);
+        }
+    }
+
+    // 创建食谱
+    async function createRecipe() {
+        elements.createRecipeModal.style.display = 'block';
+    }
+
+    // 提交食谱
+    async function submitRecipe() {
+        const title = document.getElementById('recipeTitle').value.trim();
+        const description = document.getElementById('recipeDesc').value.trim();
+        const ingredients = document.getElementById('recipeIngredients').value.trim();
+        const steps = document.getElementById('recipeSteps').value.trim();
+        const category = document.getElementById('recipeCategory').value;
+        const calories = document.getElementById('recipeCalories').value;
+
+        if (!title || !description || !ingredients || !steps || !category) {
+            alert('请填写所有必填字段');
+            return;
+        }
+
+        try {
+            const data = await callApi('/ui/recipes', {
+                method: 'POST',
+                body: JSON.stringify({
+                    title, description, ingredients, steps, category,
+                    calories: calories ? parseFloat(calories) : null
+                })
+            });
+
+            if (data.ok) {
+                alert('食谱创建成功！ID: ' + data.recipeId);
+                elements.createRecipeModal.style.display = 'none';
+                await loadRecipes();
+            }
+        } catch (error) {
+            alert('创建食谱失败: ' + error.message);
+        }
+    }
+
+    // 事件监听器
+    document.getElementById('registerBtn').addEventListener('click', register);
+    document.getElementById('loginBtn').addEventListener('click', login);
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('updateProfileBtn').addEventListener('click', updateProfile);
+    document.getElementById('searchBtn').addEventListener('click', loadRecipes);
+    document.getElementById('postCommentBtn').addEventListener('click', postComment);
+    document.getElementById('createRecipeBtn').addEventListener('click', createRecipe);
+    document.getElementById('submitRecipeBtn').addEventListener('click', submitRecipe);
+    document.getElementById('cancelRecipeBtn').addEventListener('click', () => {
+        elements.createRecipeModal.style.display = 'none';
+    });

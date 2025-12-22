@@ -25,6 +25,11 @@ dependencies {
 
     // 添加OpenCSV依赖
     implementation("com.opencsv:opencsv:5.7.1")
+
+    // 优化Servlet API依赖配置 - 使用compileOnly避免版本冲突
+    compileOnly("javax.servlet:javax.servlet-api:4.0.1")
+    // 或者添加Spring Boot Web Starter（推荐）
+    implementation("org.springframework.boot:spring-boot-starter-web")
 }
 
 tasks.withType<JavaExec> {
