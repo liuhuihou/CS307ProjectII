@@ -27,8 +27,8 @@ public class UserServiceImpl implements UserService {
     @Override
     public long register(RegisterUserReq req) {
         if (req == null || req.getName() == null || req.getName().isEmpty() ||
-            req.getGender() == null || req.getGender() == RegisterUserReq.Gender.UNKNOWN ||
-            req.getPassword() == null || req.getPassword().isEmpty() || req.getBirthday() == null) {
+                req.getGender() == null || req.getGender() == RegisterUserReq.Gender.UNKNOWN ||
+                req.getPassword() == null || req.getPassword().isEmpty() || req.getBirthday() == null) {
             return -1;
         }
 
@@ -50,16 +50,11 @@ public class UserServiceImpl implements UserService {
             return -1;
         }
 
-        // Generate ID
-        Long maxId = jdbcTemplate.queryForObject("SELECT MAX(AuthorId) FROM users", Long.class);
-        long newId = (maxId == null ? 0 : maxId) + 1;
-
         String genderStr = req.getGender() == RegisterUserReq.Gender.MALE ? "Male" : "Female";
 
-        String sql = "INSERT INTO users (AuthorId, AuthorName, Gender, Age, Password, IsDeleted) VALUES (?, ?, ?, ?, ?, ?)";
-        jdbcTemplate.update(sql, newId, req.getName(), genderStr, age, req.getPassword(), false);
-
-        return newId;
+        String sql = "INSERT INTO users (AuthorName, Gender, Age, Password, IsDeleted) VALUES (?, ?, ?, ?, ?) RETURNING AuthorId";
+        Long newId = jdbcTemplate.queryForObject(sql, Long.class, req.getName(), genderStr, age, req.getPassword(), false);
+        return newId != null ? newId : -1;
     }
 
     private LocalDate parseDate(String dateStr) {
@@ -102,7 +97,7 @@ public class UserServiceImpl implements UserService {
             throw new SecurityException("Invalid auth");
         }
         if (auth.getAuthorId() != userId) {
-             throw new SecurityException("Cannot delete other's account");
+            throw new SecurityException("Cannot delete other's account");
         }
 
         try {
@@ -148,16 +143,16 @@ public class UserServiceImpl implements UserService {
     public UserRecord getById(long userId) {
         try {
             UserRecord record = jdbcTemplate.queryForObject("SELECT * FROM users WHERE AuthorId = ? AND IsDeleted = false",
-                (rs, rowNum) -> {
-                    UserRecord u = new UserRecord();
-                    u.setAuthorId(rs.getLong("AuthorId"));
-                    u.setAuthorName(rs.getString("AuthorName"));
-                    u.setGender(rs.getString("Gender"));
-                    u.setAge(rs.getInt("Age"));
-                    u.setPassword(rs.getString("Password"));
-                    u.setDeleted(rs.getBoolean("IsDeleted"));
-                    return u;
-                }, userId);
+                    (rs, rowNum) -> {
+                        UserRecord u = new UserRecord();
+                        u.setAuthorId(rs.getLong("AuthorId"));
+                        u.setAuthorName(rs.getString("AuthorName"));
+                        u.setGender(rs.getString("Gender"));
+                        u.setAge(rs.getInt("Age"));
+                        u.setPassword(rs.getString("Password"));
+                        u.setDeleted(rs.getBoolean("IsDeleted"));
+                        return u;
+                    }, userId);
 
             if (record != null) {
                 Integer followers = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM user_follows WHERE FollowingId = ?", Integer.class, userId);
@@ -218,10 +213,10 @@ public class UserServiceImpl implements UserService {
 
         StringBuilder sql = new StringBuilder(
                 "SELECT r.RecipeId, r.Name, r.AuthorId, u.AuthorName, r.DatePublished, r.AggregatedRating, r.ReviewCount " +
-                "FROM recipes r " +
-                "JOIN users u ON r.AuthorId = u.AuthorId " +
-                "JOIN user_follows uf ON r.AuthorId = uf.FollowingId " +
-                "WHERE uf.FollowerId = ?");
+                        "FROM recipes r " +
+                        "JOIN users u ON r.AuthorId = u.AuthorId " +
+                        "JOIN user_follows uf ON r.AuthorId = uf.FollowingId " +
+                        "WHERE uf.FollowerId = ?");
 
         List<Object> params = new ArrayList<>();
         params.add(auth.getAuthorId());
