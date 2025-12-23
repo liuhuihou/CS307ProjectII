@@ -140,14 +140,10 @@ public class RecipeServiceImpl implements RecipeService {
             throw new IllegalArgumentException("Recipe name cannot be empty");
         }
 
-        // Generate ID
-        Long maxId = jdbcTemplate.queryForObject("SELECT MAX(RecipeId) FROM recipes", Long.class);
-        long newId = (maxId == null ? 0 : maxId) + 1;
-
-        String sql = "INSERT INTO recipes (RecipeId, Name, AuthorId, CookTime, PrepTime, TotalTime, DatePublished, " +
+        String sql = "INSERT INTO recipes (Name, AuthorId, CookTime, PrepTime, TotalTime, DatePublished, " +
                 "Description, RecipeCategory, AggregatedRating, ReviewCount, Calories, FatContent, SaturatedFatContent, " +
                 "CholesterolContent, SodiumContent, CarbohydrateContent, FiberContent, SugarContent, ProteinContent, " +
-                "RecipeServings, RecipeYield) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                "RecipeServings, RecipeYield) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING RecipeId";
 
         // Calculate TotalTime if possible
         String totalTime = dto.getTotalTime();
@@ -159,8 +155,7 @@ public class RecipeServiceImpl implements RecipeService {
             } catch (Exception ignored) {}
         }
 
-        jdbcTemplate.update(sql,
-                newId,
+        Long newId = jdbcTemplate.queryForObject(sql, Long.class,
                 dto.getName(),
                 auth.getAuthorId(),
                 dto.getCookTime(),
@@ -184,14 +179,14 @@ public class RecipeServiceImpl implements RecipeService {
                 dto.getRecipeYield()
         );
 
-        if (dto.getRecipeIngredientParts() != null) {
+        if (newId != null && dto.getRecipeIngredientParts() != null) {
             String ingSql = "INSERT INTO recipe_ingredients (RecipeId, IngredientPart) VALUES (?, ?)";
             for (String part : dto.getRecipeIngredientParts()) {
                 jdbcTemplate.update(ingSql, newId, part);
             }
         }
 
-        return newId;
+        return newId != null ? newId : 0L;
     }
 
     @Override
@@ -230,7 +225,7 @@ public class RecipeServiceImpl implements RecipeService {
             currentCookTime = (String) times.get("CookTime");
             currentPrepTime = (String) times.get("PrepTime");
         } catch (EmptyResultDataAccessException e) {
-             throw new IllegalArgumentException("Recipe not found");
+            throw new IllegalArgumentException("Recipe not found");
         }
 
         String newCookTime = cookTimeIso != null ? cookTimeIso : currentCookTime;
@@ -369,7 +364,7 @@ public class RecipeServiceImpl implements RecipeService {
         try {
             String servings = rs.getString("RecipeServings");
             if (servings != null && !servings.isEmpty() && !servings.equals("null")) {
-                 record.setRecipeServings(Integer.parseInt(servings));
+                record.setRecipeServings(Integer.parseInt(servings));
             }
         } catch (NumberFormatException e) {
             // ignore
