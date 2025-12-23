@@ -50,16 +50,11 @@ public class UserServiceImpl implements UserService {
             return -1;
         }
 
-        // Generate ID
-        Long maxId = jdbcTemplate.queryForObject("SELECT MAX(AuthorId) FROM users", Long.class);
-        long newId = (maxId == null ? 0 : maxId) + 1;
-
         String genderStr = req.getGender() == RegisterUserReq.Gender.MALE ? "Male" : "Female";
 
-        String sql = "INSERT INTO users (AuthorId, AuthorName, Gender, Age, Password, IsDeleted) VALUES (?, ?, ?, ?, ?, ?)";
-        jdbcTemplate.update(sql, newId, req.getName(), genderStr, age, req.getPassword(), false);
-
-        return newId;
+        String sql = "INSERT INTO users (AuthorName, Gender, Age, Password, IsDeleted) VALUES (?, ?, ?, ?, ?) RETURNING AuthorId";
+        Long newId = jdbcTemplate.queryForObject(sql, Long.class, req.getName(), genderStr, age, req.getPassword(), false);
+        return newId != null ? newId : -1;
     }
 
     private LocalDate parseDate(String dateStr) {
