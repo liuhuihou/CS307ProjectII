@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SUSTC 食谱系统 - 完整功能版</title>
+    <title>SUSTC 食谱系统</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 1200px; margin: 24px auto; padding: 0 12px; }
         .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
@@ -30,286 +30,301 @@
         .like-btn.liked { color: #e74c3c; }
         .loading { opacity: 0.6; pointer-events: none; }
         .hidden { display: none; }
+        /* 登录/注册页面样式 */
+        .auth-container {
+            max-width: 400px;
+            margin: 50px auto;
+            text-align: center;
+        }
+        .auth-form {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #f9f9f9;
+        }
+        .auth-form h3 {
+            margin-top: 0;
+        }
+        .auth-switch {
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        .auth-switch a {
+            color: #007bff;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        /* 分页样式 */
+        .pagination {
+            display: flex;
+            gap: 8px;
+            margin: 16px 0;
+            align-items: center;
+        }
+        .pagination button {
+            padding: 4px 12px;
+        }
+        .pagination .current-page {
+            font-weight: bold;
+            margin: 0 8px;
+        }
     </style>
 </head>
 <body>
-<h1>SUSTC 食谱系统 - 完整功能版</h1>
-
-<!-- 认证区域 -->
-<div class="box" id="authBox">
-    <h3>用户认证</h3>
-
-    <!-- 注册表单 -->
-    <div class="row">
-        <b>注册新用户</b>
-        <input id="regName" placeholder="用户名" />
-        <input id="regPassword" placeholder="密码" type="password" />
-        <select id="regGender">
-            <option value="">选择性别</option>
-            <option value="male">男</option>
-            <option value="female">女</option>
-        </select>
-        <input id="regBirthday" placeholder="生日 (YYYY-MM-DD)" />
-        <button id="registerBtn">注册</button>
-    </div>
+<!-- 登录/注册页面容器 -->
+<div id="authPage" class="auth-container">
+    <h1>SUSTC 食谱系统</h1>
 
     <!-- 登录表单 -->
-    <div class="row">
-        <b>登录</b>
-        <input id="username" placeholder="用户名" />
-        <input id="password" placeholder="密码" type="password" />
-        <button id="loginBtn">登录</button>
-        <span id="authStatus" class="muted">未登录</span>
-        <button id="logoutBtn" style="display:none;">退出登录</button>
+    <div id="loginForm" class="auth-form">
+        <h3>用户登录</h3>
+        <div class="row" style="justify-content: center;">
+            <input id="loginUsername" placeholder="用户名" style="width: 250px; margin: 5px 0;" />
+        </div>
+        <div class="row" style="justify-content: center;">
+            <input id="loginPassword" placeholder="密码" type="password" style="width: 250px; margin: 5px 0;" />
+        </div>
+        <div class="row" style="justify-content: center;">
+            <button id="loginBtn" style="margin: 10px 0;">登录</button>
+        </div>
+        <div class="auth-switch">
+            还没有账号？<a onclick="showRegisterForm()">立即注册</a>
+        </div>
     </div>
 
-    <!-- 用户信息 -->
-    <div id="userInfo" class="user-info" style="display:none;">
-        <div class="row">
-            <b>当前用户:</b>
-            <span id="currentUserName">-</span>
-            <span id="currentUserId">-</span>
+    <!-- 注册表单 -->
+    <div id="registerForm" class="auth-form" style="display: none;">
+        <h3>用户注册</h3>
+        <div class="row" style="justify-content: center;">
+            <input id="regName" placeholder="用户名" style="width: 250px; margin: 5px 0;" />
         </div>
-        <div class="row">
-            <input id="updateGender" placeholder="新性别 (可选)" />
-            <input id="updateAge" placeholder="新年龄 (可选)" type="number" />
-            <button id="updateProfileBtn">更新资料</button>
-            <button id="deleteAccountBtn" class="err">删除账户</button>
+        <div class="row" style="justify-content: center;">
+            <input id="regPassword" placeholder="密码" type="password" style="width: 250px; margin: 5px 0;" />
+        </div>
+        <div class="row" style="justify-content: center;">
+            <select id="regGender" style="width: 250px; margin: 5px 0;">
+                <option value="">选择性别</option>
+                <option value="male">男</option>
+                <option value="female">女</option>
+            </select>
+        </div>
+        <div class="row" style="justify-content: center;">
+            <input id="regBirthday" type="date" style="width: 250px; margin: 5px 0;" />
+        </div>
+        <div class="row" style="justify-content: center;">
+            <button id="registerBtn" style="margin: 10px 0;">注册</button>
+        </div>
+        <div class="auth-switch">
+            已有账号？<a onclick="showLoginForm()">立即登录</a>
         </div>
     </div>
 </div>
 
-<!-- 标签页导航 -->
-<div class="tab-buttons">
-    <button class="tab-button active" data-tab="recipes">食谱管理</button>
-    <button class="tab-button" data-tab="users">用户管理</button>
-    <button class="tab-button" data-tab="feed">动态流</button>
-    <button class="tab-button" data-tab="api">API测试</button>
-</div>
-
-<!-- 食谱管理标签页 -->
-<div id="recipes" class="tab active">
-    <div class="cols">
-        <div class="box">
-            <h3>食谱列表</h3>
+<!-- 主菜单容器 -->
+<div id="mainMenu" style="display: none;">
+    <!-- 认证区域 -->
+    <div class="box" id="authBox">
+        <!-- 用户信息 -->
+        <div id="userInfo" class="user-info">
             <div class="row">
-                <input id="query" placeholder="搜索关键字" />
-                <select id="category">
-                    <option value="">所有分类</option>
-                    <option value="中餐">中餐</option>
-                    <option value="西餐">西餐</option>
-                    <option value="日料">日料</option>
-                </select>
-                <button id="searchBtn">搜索</button>
-                <button id="createRecipeBtn">创建新食谱</button>
+                <b>当前用户:</b>
+                <span id="currentUserName">-</span>
+                <span id="currentUserId">-</span>
             </div>
-            <ul id="recipeList"></ul>
+            <div class="row">
+                <input id="updateGender" placeholder="新性别 (可选)" />
+                <input id="updateAge" placeholder="新年龄 (可选)" type="number" />
+                <button id="updateProfileBtn">更新资料</button>
+                <button id="deleteAccountBtn" class="err">删除账户</button>
+            </div>
         </div>
+        <div class="row">
+            <span id="authStatus" class="ok">已登录</span>
+            <button id="logoutBtn">退出登录</button>
+        </div>
+    </div>
 
-        <div class="box">
-            <h3>食谱详情</h3>
-            <div id="recipeDetail">
-                <div class="muted">请选择食谱查看详情</div>
+    <!-- 标签页导航 -->
+    <div class="tab-buttons">
+        <button class="tab-button active" data-tab="recipes">食谱管理</button>
+        <button class="tab-button" data-tab="users">用户管理</button>
+        <button class="tab-button" data-tab="feed">动态流</button>
+        <button class="tab-button" data-tab="api">API测试</button>
+    </div>
+
+    <!-- 食谱管理标签页 -->
+    <div id="recipes" class="tab active">
+        <div class="cols">
+            <div class="box">
+                <h3>食谱列表</h3>
+                <div class="row">
+                    <input id="query" placeholder="搜索关键字" />
+                    <select id="category">
+                        <option value="">所有分类</option>
+                        <option value="中餐">中餐</option>
+                        <option value="西餐">西餐</option>
+                        <option value="日料">日料</option>
+                    </select>
+                    <button id="searchBtn">搜索</button>
+                    <button id="createRecipeBtn">创建新食谱</button>
+                </div>
+                <ul id="recipeList"></ul>
+                <!-- 分页控制 -->
+                <div class="pagination">
+                    <button id="prevPageBtn">上一页</button>
+                    <span class="current-page">第 <span id="currentPage">1</span> 页 / 共 <span id="totalPages">1</span> 页</span>
+                    <button id="nextPageBtn">下一页</button>
+                    <select id="pageSizeSelect">
+                        <option value="10">10条/页</option>
+                        <option value="20" selected>20条/页</option>
+                        <option value="50">50条/页</option>
+                    </select>
+                </div>
             </div>
 
-            <div style="margin-top: 16px;">
-                <h4>评论管理</h4>
-                <ul id="commentList"></ul>
+            <div class="box">
+                <h3>食谱详情</h3>
+                <div id="recipeDetail">
+                    <div class="muted">请选择食谱查看详情</div>
+                </div>
 
-                <div style="margin-top: 12px;">
-                    <textarea id="commentContent" placeholder="写评论..."></textarea>
-                    <div class="row">
-                        <select id="commentRating">
-                            <option value="5">★★★★★</option>
-                            <option value="4">★★★★</option>
-                            <option value="3">★★★</option>
-                            <option value="2">★★</option>
-                            <option value="1">★</option>
-                        </select>
-                        <button id="postCommentBtn">发表评论</button>
+                <div style="margin-top: 16px;">
+                    <h4>评论管理</h4>
+                    <ul id="commentList"></ul>
+
+                    <div style="margin-top: 12px;">
+                        <textarea id="commentContent" placeholder="写评论..."></textarea>
+                        <div class="row">
+                            <select id="commentRating">
+                                <option value="5">★★★★★</option>
+                                <option value="4">★★★★</option>
+                                <option value="3">★★★</option>
+                                <option value="2">★★</option>
+                                <option value="1">★</option>
+                            </select>
+                            <button id="postCommentBtn">发表评论</button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- 用户管理标签页 -->
-<div id="users" class="tab">
-    <div class="cols">
-        <div class="box">
-            <h3>用户搜索</h3>
-            <div class="row">
-                <input id="searchUserId" placeholder="用户ID" type="number" />
-                <button id="searchUserBtn">搜索用户</button>
+    <!-- 用户管理标签页 -->
+    <div id="users" class="tab">
+        <div class="cols">
+            <div class="box">
+                <h3>用户搜索</h3>
+                <div class="row">
+                    <input id="searchUserId" placeholder="用户ID" type="number" />
+                    <button id="searchUserBtn">搜索用户</button>
+                </div>
+                <div id="searchedUser" class="user-info"></div>
             </div>
-            <div id="searchedUser" class="user-info"></div>
         </div>
+    </div>
 
+    <!-- 动态流标签页 -->
+    <div id="feed" class="tab">
         <div class="box">
-            <h3>关注管理</h3>
+            <h3>动态流</h3>
             <div class="row">
-                <input id="followUserId" placeholder="要关注的用户ID" type="number" />
-                <button id="followBtn">关注/取消关注</button>
+                <select id="feedCategory">
+                    <option value="">所有分类</option>
+                    <option value="中餐">中餐</option>
+                    <option value="西餐">西餐</option>
+                    <option value="日料">日料</option>
+                </select>
+                <button id="refreshFeedBtn">刷新</button>
             </div>
-            <div id="followStatus"></div>
+            <ul id="feedList"></ul>
         </div>
     </div>
-</div>
 
-<!-- 动态流标签页 -->
-<div id="feed" class="tab">
-    <div class="box">
-        <h3>我的动态流</h3>
-        <div class="row">
-            <select id="feedCategory">
-                <option value="">所有分类</option>
-                <option value="中餐">中餐</option>
-                <option value="西餐">西餐</option>
-            </select>
-            <button id="loadFeedBtn">加载动态</button>
+    <!-- API测试标签页 -->
+    <div id="api" class="tab">
+        <div class="box">
+            <h3>API测试</h3>
+            <div class="row">
+                <input id="apiEndpoint" placeholder="API端点 (如: /ui/recipes)" value="/ui/recipes" />
+                <select id="apiMethod">
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="DELETE">DELETE</option>
+                </select>
+                <button id="testApiBtn">测试</button>
+            </div>
+            <div>
+                <h4>请求体:</h4>
+                <textarea id="apiRequestBody" placeholder='请求体 (JSON格式)'></textarea>
+            </div>
+            <div>
+                <h4>响应:</h4>
+                <pre id="apiResponse">请点击测试按钮发送请求</pre>
+            </div>
         </div>
-        <div id="feedContent"></div>
-    </div>
-</div>
-
-<!-- API测试标签页 -->
-<div id="api" class="tab">
-    <div class="box">
-        <h3>API测试</h3>
-        <pre id="apiResult">API测试结果将显示在这里...</pre>
-        <div class="row">
-            <button onclick="testUserRegistration()">测试用户注册</button>
-            <button onclick="testUserLogin()">测试用户登录</button>
-            <button onclick="testRecipeSearch()">测试食谱搜索</button>
-        </div>
-    </div>
-</div>
-
-<!-- 创建食谱模态框 -->
-<div id="createRecipeModal" class="box" style="display:none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; z-index: 1000; max-width: 500px;">
-    <h3>创建新食谱</h3>
-    <div class="row">
-        <input id="recipeTitle" placeholder="食谱标题" />
-    </div>
-    <div class="row">
-        <textarea id="recipeDesc" placeholder="食谱描述"></textarea>
-    </div>
-    <div class="row">
-        <textarea id="recipeIngredients" placeholder="食材列表"></textarea>
-    </div>
-    <div class="row">
-        <textarea id="recipeSteps" placeholder="制作步骤"></textarea>
-    </div>
-    <div class="row">
-        <select id="recipeCategory">
-            <option value="">选择分类</option>
-            <option value="中餐">中餐</option>
-            <option value="西餐">西餐</option>
-            <option value="日料">日料</option>
-        </select>
-        <input id="recipeCalories" placeholder="卡路里" type="number" />
-    </div>
-    <div class="row">
-        <button id="submitRecipeBtn">提交</button>
-        <button id="cancelRecipeBtn">取消</button>
     </div>
 </div>
 
 <script>
+    // 页面元素
+    let elements = {};
+
+    // 全局变量
     let token = localStorage.getItem('ui_token') || '';
     let currentUser = null;
     let currentRecipeId = null;
-
-    // DOM元素
-    const elements = {
-        authStatus: document.getElementById('authStatus'),
-        userInfo: document.getElementById('userInfo'),
-        currentUserName: document.getElementById('currentUserName'),
-        currentUserId: document.getElementById('currentUserId'),
-        recipeList: document.getElementById('recipeList'),
-        recipeDetail: document.getElementById('recipeDetail'),
-        commentList: document.getElementById('commentList'),
-        logoutBtn: document.getElementById('logoutBtn'),
-        createRecipeModal: document.getElementById('createRecipeModal')
-    };
-
-    // 标签页切换
-    document.querySelectorAll('.tab-button').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(btn.dataset.tab).classList.add('active');
-        });
-    });
+    let currentPage = 1;
+    let pageSize = 20;
+    let totalPages = 1;
+    let totalItems = 0;
 
     // API调用函数
     async function callApi(url, options = {}) {
-        const headers = options.headers || {};
-        if (token && !headers['Authorization']) {
-            headers['Authorization'] = 'Bearer ' + token;
-        }
-        if (!headers['Content-Type'] && options.body) {
-            headers['Content-Type'] = 'application/json';
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
         }
 
         try {
-            const res = await fetch(url, { ...options, headers });
-            const text = await res.text();
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch {
-                data = { raw: text, ok: false, error: '响应不是有效的JSON' };
-            }
-
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}: ${data.error || data.message || '请求失败'}`);
-            }
-            return data;
+            const response = await fetch(url, {
+                ...options,
+                headers
+            });
+            return await response.json();
         } catch (error) {
             console.error('API调用失败:', error);
             throw error;
         }
     }
 
-    // 用户注册
-    async function register() {
-        const name = document.getElementById('regName').value.trim();
-        const password = document.getElementById('regPassword').value;
-        const gender = document.getElementById('regGender').value;
-        const birthday = document.getElementById('regBirthday').value;
-
-        if (!name || !password || !gender || !birthday) {
-            alert('请填写所有必填字段');
-            return;
-        }
-
-        try {
-            const data = await callApi('/ui/auth/register', {
-                method: 'POST',
-                body: JSON.stringify({ name, password, gender, birthday })
-            });
-
-            if (data.ok) {
-                alert('注册成功！用户ID: ' + data.userId);
-                // 自动登录
-                token = data.token;
-                localStorage.setItem('ui_token', token);
-                await loadCurrentUserInfo();
-            } else {
-                alert('注册失败: ' + data.error);
-            }
-        } catch (error) {
-            alert('注册失败: ' + error.message);
-        }
+    // 显示登录表单
+    function showLoginForm() {
+        document.getElementById('loginForm').style.display = 'block';
+        document.getElementById('registerForm').style.display = 'none';
     }
 
-    // 用户登录
+    // 显示注册表单
+    function showRegisterForm() {
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('registerForm').style.display = 'block';
+    }
+
+    // 登录
     async function login() {
-        const username = document.getElementById('username').value.trim();
-        const password = document.getElementById('password').value;
+        const username = document.getElementById('loginUsername').value.trim();
+        const password = document.getElementById('loginPassword').value;
+
+        if (!username || !password) {
+            alert('用户名和密码不能为空');
+            return;
+        }
 
         try {
             const data = await callApi('/ui/auth/login', {
@@ -320,13 +335,44 @@
             if (data.ok && data.token) {
                 token = data.token;
                 localStorage.setItem('ui_token', token);
+                document.getElementById('authPage').style.display = 'none';
+                document.getElementById('mainMenu').style.display = 'block';
                 await loadCurrentUserInfo();
-                alert('登录成功！');
+                await loadRecipes();
             } else {
                 alert('登录失败: ' + (data.error || '未知错误'));
             }
         } catch (error) {
             alert('登录失败: ' + error.message);
+        }
+    }
+
+    // 注册
+    async function register() {
+        const name = document.getElementById('regName').value.trim();
+        const password = document.getElementById('regPassword').value;
+        const gender = document.getElementById('regGender').value;
+        const birthday = document.getElementById('regBirthday').value;
+
+        if (!name || !password) {
+            alert('用户名和密码不能为空');
+            return;
+        }
+
+        try {
+            const data = await callApi('/ui/auth/register', {
+                method: 'POST',
+                body: JSON.stringify({ name, password, gender, birthday })
+            });
+
+            if (data.ok) {
+                alert('注册成功! 请登录');
+                showLoginForm();
+            } else {
+                alert('注册失败: ' + (data.error || '未知错误'));
+            }
+        } catch (error) {
+            alert('注册失败: ' + error.message);
         }
     }
 
@@ -342,12 +388,9 @@
             const data = await callApi(`/ui/users/${userId}`);
             if (data.ok) {
                 currentUser = data.user;
-                elements.currentUserName.textContent = currentUser.name;
-                elements.currentUserId.textContent = 'ID: ' + currentUser.id;
-                elements.userInfo.style.display = 'block';
-                elements.logoutBtn.style.display = 'inline-block';
-                elements.authStatus.textContent = '已登录';
-                elements.authStatus.className = 'ok';
+                document.getElementById('currentUserName').textContent = currentUser.name;
+                document.getElementById('currentUserId').textContent = 'ID: ' + currentUser.id;
+                document.getElementById('userInfo').style.display = 'block';
             }
         } catch (error) {
             console.error('加载用户信息失败:', error);
@@ -359,31 +402,117 @@
         token = '';
         currentUser = null;
         localStorage.removeItem('ui_token');
-        elements.userInfo.style.display = 'none';
-        elements.logoutBtn.style.display = 'none';
-        elements.authStatus.textContent = '未登录';
-        elements.authStatus.className = 'muted';
+        // 隐藏主菜单，显示登录/注册页面
+        document.getElementById('mainMenu').style.display = 'none';
+        document.getElementById('authPage').style.display = 'block';
+        // 重置登录表单
+        document.getElementById('loginUsername').value = '';
+        document.getElementById('loginPassword').value = '';
     }
 
     // 更新用户资料
     async function updateProfile() {
+        if (!token) return;
+
         const gender = document.getElementById('updateGender').value.trim();
-        const age = document.getElementById('updateAge').value;
+        const age = document.getElementById('updateAge').value.trim();
+
+        if (!gender && !age) {
+            alert('请至少输入一个要更新的字段');
+            return;
+        }
+
+        const updateData = {};
+        if (gender) updateData.gender = gender;
+        if (age) updateData.age = parseInt(age);
 
         try {
-            const data = await callApi('/ui/users/profile', {
+            const data = await callApi('/ui/profile', {
                 method: 'PUT',
-                body: JSON.stringify({ gender, age: age ? parseInt(age) : null })
+                body: JSON.stringify(updateData)
             });
 
             if (data.ok) {
-                alert('资料更新成功！');
+                alert('资料更新成功!');
+                // 重新加载用户信息
                 await loadCurrentUserInfo();
+                // 清空输入框
+                document.getElementById('updateGender').value = '';
+                document.getElementById('updateAge').value = '';
             } else {
-                alert('更新失败: ' + data.error);
+                alert('资料更新失败: ' + (data.error || '未知错误'));
             }
         } catch (error) {
-            alert('更新失败: ' + error.message);
+            alert('资料更新失败: ' + error.message);
+        }
+    }
+
+    // 删除账户
+    async function deleteAccount() {
+        if (!token || !confirm('确定要删除账户吗？此操作不可恢复！')) {
+            return;
+        }
+
+        try {
+            const data = await callApi('/ui/account', {
+                method: 'DELETE'
+            });
+
+            if (data.ok) {
+                alert('账户删除成功!');
+                logout();
+            } else {
+                alert('账户删除失败: ' + (data.error || '未知错误'));
+            }
+        } catch (error) {
+            alert('账户删除失败: ' + error.message);
+        }
+    }
+
+    // 获取所有食谱分类
+    async function loadCategories() {
+        try {
+            // 这里简化处理，实际应该调用获取分类的API
+            // 暂时使用搜索功能来获取所有分类
+            const data = await callApi('/ui/recipes?page=1&pageSize=1000');
+            const categories = new Set();
+
+            (data.items || []).forEach(recipe => {
+                if (recipe.category) {
+                    categories.add(recipe.category);
+                }
+            });
+
+            // 更新分类下拉框
+            const categorySelect = document.getElementById('category');
+            // 保留第一个"所有分类"选项
+            const allOption = categorySelect.querySelector('option[value=""]');
+            categorySelect.innerHTML = '';
+            categorySelect.appendChild(allOption);
+
+            // 添加所有实际存在的分类
+            categories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                categorySelect.appendChild(option);
+            });
+
+            // 同样更新动态流的分类下拉框
+            const feedCategorySelect = document.getElementById('feedCategory');
+            const feedAllOption = feedCategorySelect.querySelector('option[value=""]');
+            feedCategorySelect.innerHTML = '';
+            feedCategorySelect.appendChild(feedAllOption);
+
+            categories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                feedCategorySelect.appendChild(option);
+            });
+
+        } catch (error) {
+            console.error('加载分类失败:', error);
         }
     }
 
@@ -392,24 +521,36 @@
         const query = document.getElementById('query').value.trim();
         const category = document.getElementById('category').value;
 
-        let url = '/ui/recipes?page=1&pageSize=20';
+        let url = `/ui/recipes?page=${currentPage}&pageSize=${pageSize}`;
         if (query) url += '&q=' + encodeURIComponent(query);
         if (category) url += '&category=' + encodeURIComponent(category);
 
         try {
             const data = await callApi(url);
-            elements.recipeList.innerHTML = '';
+            const recipeList = document.getElementById('recipeList');
+            recipeList.innerHTML = '';
 
             (data.items || []).forEach(recipe => {
                 const li = document.createElement('li');
                 li.className = 'recipe-item';
                 li.innerHTML = `
-                    <strong>${recipe.title}</strong><br>
-                    <span class="muted">作者: ${recipe.author} | 分类: ${recipe.category} | 评分: ${recipe.rating || '无'}</span>
-                `;
+                        <strong>${recipe.title}</strong> (ID: ${recipe.id})<br>
+                        <span class="muted">作者: ${recipe.author} | 分类: ${recipe.category} | 评分: ${recipe.rating || '无'}</span>
+                    `;
                 li.onclick = () => selectRecipe(recipe.id);
-                elements.recipeList.appendChild(li);
+                recipeList.appendChild(li);
             });
+
+            // 更新分页信息
+            totalItems = data.total || 0;
+            totalPages = Math.ceil(totalItems / pageSize);
+            document.getElementById('currentPage').textContent = currentPage;
+            document.getElementById('totalPages').textContent = totalPages;
+
+            // 启用/禁用分页按钮
+            document.getElementById('prevPageBtn').disabled = currentPage === 1;
+            document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+
         } catch (error) {
             alert('加载食谱失败: ' + error.message);
         }
@@ -422,68 +563,92 @@
         try {
             const data = await callApi(`/ui/recipes/${id}`);
             if (data.ok) {
-                elements.recipeDetail.innerHTML = `
-                    <h4>${data.recipe.title}</h4>
-                    <p><strong>描述:</strong> ${data.recipe.description}</p>
-                    <p><strong>分类:</strong> ${data.recipe.category}</p>
-                    <p><strong>食材:</strong> ${data.recipe.ingredients}</p>
-                    <p><strong>步骤:</strong> ${data.recipe.steps}</p>
-                    <p><strong>营养信息:</strong> 卡路里: ${data.recipe.calories || 'N/A'} | 蛋白质: ${data.recipe.protein || 'N/A'} | 脂肪: ${data.recipe.fat || 'N/A'} | 碳水: ${data.recipe.carbs || 'N/A'}</p>
-                `;
-                await loadComments();
+                const recipe = data.recipe;
+                document.getElementById('recipeDetail').innerHTML = `
+                        <h3>${recipe.title}</h3>
+                        <div class="row">
+                            <b>食谱ID:</b> ${recipe.id}<br>
+                            <b>作者:</b> ${recipe.author} (ID: ${recipe.authorId})<br>
+                            <b>分类:</b> ${recipe.category}<br>
+                            <b>评分:</b> ${recipe.rating || '无'}<br>
+                            <b>创建时间:</b> ${recipe.createdAt}
+                        </div>
+                        <div style="margin: 12px 0;">
+                            <h4>描述:</h4>
+                            <p>${recipe.description}</p>
+                        </div>
+                        <div>
+                            <h4>食材:</h4>
+                            <p>${recipe.ingredients}</p>
+                        </div>
+                    `;
+
+                // 加载评论
+                loadComments(id);
+            } else {
+                document.getElementById('recipeDetail').innerHTML = '<div class="err">无法加载食谱详情</div>';
             }
         } catch (error) {
-            elements.recipeDetail.innerHTML = `<div class="err">加载失败: ${error.message}</div>`;
+            document.getElementById('recipeDetail').innerHTML = '<div class="err">加载食谱详情失败</div>';
+            console.error('加载食谱详情失败:', error);
         }
     }
 
     // 加载评论
-    async function loadComments() {
-        if (!currentRecipeId) return;
-
+    async function loadComments(recipeId) {
         try {
-            const data = await callApi(`/ui/recipes/${currentRecipeId}/comments`);
-            elements.commentList.innerHTML = '';
+            const data = await callApi(`/ui/recipes/${recipeId}/comments`);
+            const commentList = document.getElementById('commentList');
+            commentList.innerHTML = '';
 
-            (data.items || []).forEach(comment => {
-                const li = document.createElement('li');
-                li.className = 'comment-item';
-                li.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>${comment.userName}</strong>
-                            <span style="color: gold;">${'★'.repeat(comment.rating)}</span>
-                        </div>
-                        <button class="like-btn" onclick="likeComment(${comment.id})">❤️ ${comment.likes || 0}</button>
-                    </div>
-                    <div>${comment.content}</div>
-                    <span class="muted">${comment.createdAt}</span>
-                `;
-                elements.commentList.appendChild(li);
-            });
+            if (data.comments && data.comments.length > 0) {
+                data.comments.forEach(comment => {
+                    const li = document.createElement('li');
+                    li.className = 'comment-item';
+                    li.innerHTML = `
+                            <div class="row">
+                                <b>${comment.authorName} (ID: ${comment.authorId})</b>
+                                <span class="muted">${comment.createdAt}</span>
+                                <button class="like-btn ${comment.liked ? 'liked' : ''}" onclick="likeComment(${comment.id})">
+                                    ❤️ ${comment.likes}
+                                </button>
+                            </div>
+                            <div>评分: ${comment.rating}★</div>
+                            <div>${comment.content}</div>
+                        `;
+                    commentList.appendChild(li);
+                });
+            } else {
+                commentList.innerHTML = '<li class="muted">暂无评论</li>';
+            }
         } catch (error) {
             console.error('加载评论失败:', error);
+            document.getElementById('commentList').innerHTML = '<li class="err">加载评论失败</li>';
         }
     }
 
     // 点赞评论
-    async function likeComment(reviewId) {
+    async function likeComment(commentId) {
         try {
-            const data = await callApi(`/ui/comments/${reviewId}/like`, {
+            const data = await callApi(`/ui/comments/${commentId}/like`, {
                 method: 'POST'
             });
+
             if (data.ok) {
-                await loadComments();
+                // 重新加载当前食谱的评论
+                if (currentRecipeId) {
+                    loadComments(currentRecipeId);
+                }
             }
         } catch (error) {
-            alert('点赞失败: ' + error.message);
+            console.error('点赞失败:', error);
         }
     }
 
     // 发表评论
     async function postComment() {
         if (!currentRecipeId) {
-            alert('请先选择食谱');
+            alert('请先选择一个食谱');
             return;
         }
 
@@ -502,62 +667,266 @@
             });
 
             if (data.ok) {
-                document.getElementById('commentContent').value = '';
-                await loadComments();
                 alert('评论发表成功！');
+                document.getElementById('commentContent').value = '';
+                loadComments(currentRecipeId);
+            } else {
+                alert('评论发表失败: ' + data.error);
             }
         } catch (error) {
-            alert('发表评论失败: ' + error.message);
+            alert('评论发表失败: ' + error.message);
         }
     }
 
-    // 创建食谱
-    async function createRecipe() {
-        elements.createRecipeModal.style.display = 'block';
-    }
-
-    // 提交食谱
-    async function submitRecipe() {
-        const title = document.getElementById('recipeTitle').value.trim();
-        const description = document.getElementById('recipeDesc').value.trim();
-        const ingredients = document.getElementById('recipeIngredients').value.trim();
-        const steps = document.getElementById('recipeSteps').value.trim();
-        const category = document.getElementById('recipeCategory').value;
-        const calories = document.getElementById('recipeCalories').value;
-
-        if (!title || !description || !ingredients || !steps || !category) {
-            alert('请填写所有必填字段');
+    // 搜索用户
+    async function searchUser() {
+        const userId = document.getElementById('searchUserId').value.trim();
+        if (!userId) {
+            alert('请输入用户ID');
             return;
         }
 
         try {
-            const data = await callApi('/ui/recipes', {
-                method: 'POST',
-                body: JSON.stringify({
-                    title, description, ingredients, steps, category,
-                    calories: calories ? parseFloat(calories) : null
-                })
-            });
-
+            const data = await callApi(`/ui/users/${userId}`);
             if (data.ok) {
-                alert('食谱创建成功！ID: ' + data.recipeId);
-                elements.createRecipeModal.style.display = 'none';
-                await loadRecipes();
+                const user = data.user;
+                document.getElementById('searchedUser').innerHTML = `
+                        <div class="row">
+                            <b>用户名:</b> ${user.name}
+                            <b>ID:</b> ${user.id}
+                        </div>
+                        <div class="row">
+                            <b>性别:</b> ${user.gender || '未设置'}
+                            <b>年龄:</b> ${user.age || '未设置'}
+                        </div>
+                        <div class="row">
+                            <b>关注数:</b> ${user.following}
+                            <b>粉丝数:</b> ${user.followers}
+                        </div>
+                        <div class="row">
+                            <button onclick="followUser(${user.id})">关注</button>
+                        </div>
+                    `;
+            } else {
+                document.getElementById('searchedUser').innerHTML = '<div class="err">用户不存在或无法访问</div>';
             }
         } catch (error) {
-            alert('创建食谱失败: ' + error.message);
+            alert('搜索用户失败: ' + error.message);
         }
     }
 
-    // 事件监听器
-    document.getElementById('registerBtn').addEventListener('click', register);
-    document.getElementById('loginBtn').addEventListener('click', login);
-    document.getElementById('logoutBtn').addEventListener('click', logout);
-    document.getElementById('updateProfileBtn').addEventListener('click', updateProfile);
-    document.getElementById('searchBtn').addEventListener('click', loadRecipes);
-    document.getElementById('postCommentBtn').addEventListener('click', postComment);
-    document.getElementById('createRecipeBtn').addEventListener('click', createRecipe);
-    document.getElementById('submitRecipeBtn').addEventListener('click', submitRecipe);
-    document.getElementById('cancelRecipeBtn').addEventListener('click', () => {
-        elements.createRecipeModal.style.display = 'none';
+    // 关注用户
+    async function followUser(userId) {
+        try {
+            const data = await callApi(`/ui/users/${userId}/follow`, {
+                method: 'POST'
+            });
+
+            if (data.ok) {
+                alert('关注成功！');
+                // 重新加载用户信息
+                loadCurrentUserInfo();
+            } else {
+                alert('关注失败: ' + (data.error || '未知错误'));
+            }
+        } catch (error) {
+            alert('关注失败: ' + error.message);
+        }
+    }
+
+    // 加载动态流
+    async function loadFeed() {
+        const category = document.getElementById('feedCategory').value;
+
+        let url = '/ui/feed?page=1&size=20';
+        if (category) {
+            url += '&category=' + encodeURIComponent(category);
+        }
+
+        try {
+            const data = await callApi(url);
+            const feedList = document.getElementById('feedList');
+            feedList.innerHTML = '';
+
+            (data.feed || []).forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'recipe-item';
+                li.innerHTML = `
+                        <strong>${item.title}</strong><br>
+                        <span class="muted">作者: ${item.authorName} (ID: ${item.authorId}) | 分类: ${item.category} | 评分: ${item.rating || '无'}</span>
+                    `;
+                li.onclick = () => selectRecipe(item.recipeId);
+                feedList.appendChild(li);
+            });
+        } catch (error) {
+            alert('加载动态流失败: ' + error.message);
+        }
+    }
+
+    // 测试API
+    async function testApi() {
+        const endpoint = document.getElementById('apiEndpoint').value.trim();
+        const method = document.getElementById('apiMethod').value;
+        const requestBody = document.getElementById('apiRequestBody').value.trim();
+
+        if (!endpoint) {
+            alert('请输入API端点');
+            return;
+        }
+
+        try {
+            const options = {
+                method: method
+            };
+
+            if (requestBody) {
+                options.body = requestBody;
+            }
+
+            const data = await callApi(endpoint, options);
+            document.getElementById('apiResponse').textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+            document.getElementById('apiResponse').textContent = '错误: ' + error.message;
+        }
+    }
+
+    // 上一页
+    function prevPage() {
+        if (currentPage > 1) {
+            currentPage--;
+            loadRecipes();
+        }
+    }
+
+    // 下一页
+    function nextPage() {
+        if (currentPage < totalPages) {
+            currentPage++;
+            loadRecipes();
+        }
+    }
+
+    // 改变每页大小
+    function changePageSize() {
+        pageSize = parseInt(document.getElementById('pageSizeSelect').value);
+        currentPage = 1;
+        loadRecipes();
+    }
+
+    // 切换标签页
+    function switchTab(tabName) {
+        // 隐藏所有标签页
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+
+        // 移除所有按钮的active类
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+
+        // 显示选中的标签页
+        document.getElementById(tabName).classList.add('active');
+
+        // 添加选中按钮的active类
+        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+        // 根据标签页加载相应内容
+        if (tabName === 'feed') {
+            loadFeed();
+        }
+    }
+
+    // 页面加载时检查是否已登录
+    window.addEventListener('load', () => {
+        // 初始化元素引用
+        elements = {
+            currentUserName: document.getElementById('currentUserName'),
+            currentUserId: document.getElementById('currentUserId'),
+            userInfo: document.getElementById('userInfo'),
+            logoutBtn: document.getElementById('logoutBtn'),
+            authStatus: document.getElementById('authStatus'),
+            recipeList: document.getElementById('recipeList')
+        };
+
+        // 加载分类
+        if (token) {
+            loadCategories();
+        }
+
+        if (token) {
+            // 验证token是否有效
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const exp = payload.exp;
+                const now = Date.now() / 1000;
+
+                if (exp > now) {
+                    // token有效，直接进入主菜单
+                    document.getElementById('authPage').style.display = 'none';
+                    document.getElementById('mainMenu').style.display = 'block';
+                    loadCurrentUserInfo();
+                    loadRecipes();
+                    loadCategories();
+                }
+            } catch (error) {
+                // token无效，清除token
+                token = '';
+                localStorage.removeItem('ui_token');
+            }
+        }
     });
+
+    // 事件监听
+    document.addEventListener('DOMContentLoaded', () => {
+        // 登录和注册
+        document.getElementById('loginBtn').addEventListener('click', login);
+        document.getElementById('registerBtn').addEventListener('click', register);
+
+        // 用户管理
+        document.getElementById('logoutBtn').addEventListener('click', logout);
+        document.getElementById('updateProfileBtn').addEventListener('click', updateProfile);
+        document.getElementById('deleteAccountBtn').addEventListener('click', deleteAccount);
+
+        // 食谱管理
+        document.getElementById('searchBtn').addEventListener('click', () => {
+            currentPage = 1;
+            loadRecipes();
+        });
+        document.getElementById('query').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                currentPage = 1;
+                loadRecipes();
+            }
+        });
+        document.getElementById('createRecipeBtn').addEventListener('click', () => {
+            alert('创建食谱功能待实现');
+        });
+
+        // 评论管理
+        document.getElementById('postCommentBtn').addEventListener('click', postComment);
+
+        // 用户搜索
+        document.getElementById('searchUserBtn').addEventListener('click', searchUser);
+
+        // 动态流
+        document.getElementById('refreshFeedBtn').addEventListener('click', loadFeed);
+
+        // API测试
+        document.getElementById('testApiBtn').addEventListener('click', testApi);
+
+        // 分页控制
+        document.getElementById('prevPageBtn').addEventListener('click', prevPage);
+        document.getElementById('nextPageBtn').addEventListener('click', nextPage);
+        document.getElementById('pageSizeSelect').addEventListener('change', changePageSize);
+
+        // 标签页切换
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                switchTab(btn.dataset.tab);
+            });
+        });
+    });
+</script>
+</body>
+</html>
