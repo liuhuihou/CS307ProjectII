@@ -196,6 +196,7 @@
             <div class="row">
                 <button onclick="showFollowingList()">我的关注</button>
                 <button onclick="showFollowersList()">我的粉丝</button>
+                <button onclick="clearRecipeCache()" style="margin-left: 10px;">清除本地缓存</button>
             </div>
         </div>
         <div class="row">
@@ -731,6 +732,23 @@
         document.getElementById('listModal').style.display = 'block';
     }
 
+    // 清除食谱缓存
+    function clearRecipeCache() {
+        let count = 0;
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('recipe_detail_')) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(key => {
+            localStorage.removeItem(key);
+            count++;
+        });
+        alert(`已清除 ${count} 条食谱缓存`);
+    }
+
     // 显示创建食谱模态框
     function showCreateRecipeModal() {
         document.getElementById('newRecipeTitle').value = '';
@@ -794,26 +812,45 @@
     // 选择食谱
     async function selectRecipe(id) {
         currentRecipeId = id;
+        const cacheKey = 'recipe_detail_' + id;
 
         try {
             let recipe;
-            // 检查缓存
-            if (recipeCache.has(id)) {
-                console.log('使用缓存加载食谱:', id);
-                recipe = recipeCache.get(id);
-            } else {
+            let fromCache = false;
+
+            // 检查localStorage缓存
+            const cachedData = localStorage.getItem(cacheKey);
+            if (cachedData) {
+                try {
+                    recipe = JSON.parse(cachedData);
+                    console.log('使用缓存加载食谱:', id);
+                    fromCache = true;
+                } catch (e) {
+                    console.error('缓存解析失败', e);
+                    localStorage.removeItem(cacheKey);
+                }
+            }
+
+            if (!recipe) {
                 const data = await callApi(`/ui/recipes/${id}`);
                 if (data.ok) {
                     recipe = data.recipe;
-                    recipeCache.set(id, recipe); // 写入缓存
+                    // 写入localStorage缓存
+                    try {
+                        localStorage.setItem(cacheKey, JSON.stringify(recipe));
+                    } catch (e) {
+                        console.warn('缓存写入失败(可能是空间已满):', e);
+                    }
                 } else {
                     document.getElementById('recipeDetail').innerHTML = '<div class="err">无法加载食谱详情</div>';
                     return;
                 }
             }
 
+            const cacheBadge = fromCache ? '<span style="font-size: 0.8em; color: green; border: 1px solid green; padding: 2px 4px; border-radius: 4px; margin-left: 8px;">已缓存</span>' : '';
+
             document.getElementById('recipeDetail').innerHTML = `
-                    <h3>${recipe.title}</h3>
+                    <h3>${recipe.title} ${cacheBadge}</h3>
                     <div class="row">
                         <b>食谱ID:</b> ${recipe.id}<br>
                         <b>作者:</b> ${recipe.author} (ID: ${recipe.authorId})<br>
