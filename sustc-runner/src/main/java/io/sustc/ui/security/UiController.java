@@ -213,7 +213,9 @@ public class UiController {
                     "category", recipe.getRecipeCategory(),
                     "calories", recipe.getCalories(),
                     "cookTime", recipe.getCookTime(),
-                    "author", recipe.getAuthorName()
+                    "author", recipe.getAuthorName(),
+                    "authorId", recipe.getAuthorId(),
+                    "createdAt", recipe.getDatePublished()
             ));
         } catch (Exception e) {
             return Map.of("ok", false, "error", "获取食谱详情失败: " + e.getMessage());
@@ -249,11 +251,13 @@ public class UiController {
      * 获取食谱评论
      */
     @GetMapping("/recipes/{id}/comments")
-    public Map<String, Object> listComments(@PathVariable long id) {
+    public Map<String, Object> listComments(@PathVariable long id, HttpServletRequest req) {
         try {
+            Long currentUserId = (Long) req.getAttribute("uiUserId");
+
             var reviews = reviewService.listByRecipe(id, 1, 20, "date_desc");
             if (reviews == null || reviews.getItems() == null) {
-                return Map.of("ok", true, "items", List.of());
+                return Map.of("ok", true, "comments", List.of());
             }
 
             List<Map<String, Object>> items = reviews.getItems().stream()
@@ -275,16 +279,23 @@ public class UiController {
                         // 使用HashMap替代Map.of()以避免类型转换问题
                         Map<String, Object> item = new HashMap<>();
                         item.put("id", review.getReviewId());
-                        item.put("userId", review.getAuthorId());
-                        item.put("userName", getUsernameById(review.getAuthorId()));
+                        item.put("authorId", review.getAuthorId());
+                        item.put("authorName", getUsernameById(review.getAuthorId()));
                         item.put("content", review.getReview());
                         item.put("rating", ratingValue);
                         item.put("createdAt", review.getDateSubmitted());
                         item.put("likes", review.getLikes() != null ? review.getLikes().length : 0);
+
+                        boolean liked = false;
+                        if (currentUserId != null) {
+                            liked = isLikedByUser(review.getReviewId(), currentUserId);
+                        }
+                        item.put("liked", liked);
+
                         return item;
                     })
                     .toList();
-            return Map.of("ok", true, "items", items);
+            return Map.of("ok", true, "comments", items);
         } catch (Exception e) {
             return Map.of("ok", false, "error", "获取评论失败: " + e.getMessage());
         }
@@ -383,6 +394,38 @@ public class UiController {
         }
     }
 
+    /**
+     * 获取用户的关注列表
+     */
+    @GetMapping("/users/{userId}/following")
+    public Map<String, Object> getFollowing(@PathVariable long userId) {
+        try {
+            String sql = "SELECT u.AuthorId as id, u.AuthorName as name FROM users u " +
+                         "JOIN user_follows f ON u.AuthorId = f.followingid " +
+                         "WHERE f.followerid = ?";
+            List<Map<String, Object>> following = jdbcTemplate.queryForList(sql, userId);
+            return Map.of("ok", true, "items", following);
+        } catch (Exception e) {
+            return Map.of("ok", false, "error", "获取关注列表失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取用户的粉丝列表
+     */
+    @GetMapping("/users/{userId}/followers")
+    public Map<String, Object> getFollowers(@PathVariable long userId) {
+        try {
+            String sql = "SELECT u.AuthorId as id, u.AuthorName as name FROM users u " +
+                         "JOIN user_follows f ON u.AuthorId = f.followerid " +
+                         "WHERE f.followingid = ?";
+            List<Map<String, Object>> followers = jdbcTemplate.queryForList(sql, userId);
+            return Map.of("ok", true, "items", followers);
+        } catch (Exception e) {
+            return Map.of("ok", false, "error", "获取粉丝列表失败: " + e.getMessage());
+        }
+    }
+
     // 辅助方法
     private RegisterUserReq.Gender parseGender(String genderStr) {
         return switch (genderStr.toLowerCase()) {
@@ -395,6 +438,15 @@ public class UiController {
     private AuthInfo createAuthInfo(long userId) {
         AuthInfo auth = new AuthInfo();
         auth.setAuthorId(userId);
+        // 从数据库获取密码
+        try {
+            String sql = "SELECT Password FROM users WHERE AuthorId = ? AND IsDeleted = false";
+            String password = jdbcTemplate.queryForObject(sql, String.class, userId);
+            auth.setPassword(password);
+        } catch (Exception e) {
+            // 如果找不到用户或密码，保持为空，Service层可能会报错
+            System.err.println("Failed to fetch password for user " + userId + ": " + e.getMessage());
+        }
         return auth;
     }
 
@@ -413,6 +465,16 @@ public class UiController {
             return jdbcTemplate.queryForObject(sql, String.class, userId);
         } catch (Exception e) {
             return "未知用户";
+        }
+    }
+
+    private boolean isLikedByUser(long reviewId, long userId) {
+        try {
+            String sql = "SELECT COUNT(*) FROM review_likes WHERE reviewid = ? AND authorid = ?";
+            Integer count = jdbcTemplate.queryForObject(sql, Integer.class, reviewId, userId);
+            return count != null && count > 0;
+        } catch (Exception e) {
+            return false;
         }
     }
 }

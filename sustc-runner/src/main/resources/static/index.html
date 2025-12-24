@@ -121,6 +121,17 @@
     </div>
 </div>
 
+<!-- 列表模态框 -->
+<div id="listModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="background: white; width: 400px; margin: 100px auto; padding: 20px; border-radius: 8px; max-height: 80vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 id="listModalTitle" style="margin: 0;">列表</h3>
+            <button onclick="document.getElementById('listModal').style.display='none'" style="border: none; background: none; font-size: 20px; cursor: pointer;">&times;</button>
+        </div>
+        <ul id="listModalContent" style="list-style: none; padding: 0;"></ul>
+    </div>
+</div>
+
 <!-- 主菜单容器 -->
 <div id="mainMenu" style="display: none;">
     <!-- 认证区域 -->
@@ -137,6 +148,10 @@
                 <input id="updateAge" placeholder="新年龄 (可选)" type="number" />
                 <button id="updateProfileBtn">更新资料</button>
                 <button id="deleteAccountBtn" class="err">删除账户</button>
+            </div>
+            <div class="row">
+                <button onclick="showFollowingList()">我的关注</button>
+                <button onclick="showFollowersList()">我的粉丝</button>
             </div>
         </div>
         <div class="row">
@@ -168,6 +183,10 @@
                     </select>
                     <button id="searchBtn">搜索</button>
                     <button id="createRecipeBtn">创建新食谱</button>
+                </div>
+                <div class="row">
+                    <input id="searchRecipeIdInput" placeholder="输入食谱ID直达" type="number" style="width: 150px;" />
+                    <button id="searchRecipeIdBtn">按ID查找</button>
                 </div>
                 <ul id="recipeList"></ul>
                 <!-- 分页控制 -->
@@ -281,12 +300,31 @@
     let totalPages = 1;
     let totalItems = 0;
 
+    // 格式化日期
+    function formatDate(timestamp) {
+        if (!timestamp) return '未知时间';
+        // 尝试转为数字
+        const num = Number(timestamp);
+        const date = new Date(isNaN(num) ? timestamp : num);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+
     // API调用函数
     async function callApi(url, options = {}) {
         const headers = {
-            'Content-Type': 'application/json',
             ...options.headers
         };
+
+        if (options.body) {
+            headers['Content-Type'] = 'application/json';
+        }
 
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
@@ -362,7 +400,13 @@
         try {
             const data = await callApi('/ui/auth/register', {
                 method: 'POST',
-                body: JSON.stringify({ name, password, gender, birthday })
+                body: JSON.stringify({
+                    username: name,
+                    name: name,
+                    password: password,
+                    gender: gender ? gender.toUpperCase() : null,
+                    birthday: birthday
+                })
             });
 
             if (data.ok) {
@@ -376,19 +420,48 @@
         }
     }
 
+    // 解析自定义Token
+    function parseToken(token) {
+        try {
+            const parts = token.split('.');
+            if (parts.length !== 2) return null;
+
+            // Base64Url还原为Base64
+            let base64 = parts[0].replace(/-/g, '+').replace(/_/g, '/');
+            // 补全padding
+            while (base64.length % 4) {
+                base64 += '=';
+            }
+
+            const decoded = atob(base64);
+            const [userId, exp] = decoded.split(':');
+
+            if (!userId || !exp) return null;
+
+            return {
+                userId: userId,
+                exp: parseInt(exp)
+            };
+        } catch (e) {
+            console.error('Token解析失败:', e);
+            return null;
+        }
+    }
+
     // 加载当前用户信息
     async function loadCurrentUserInfo() {
         if (!token) return;
 
         try {
-            // 从token中解析用户ID
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            const userId = payload.sub;
+            const payload = parseToken(token);
+            if (!payload) return;
+
+            const userId = payload.userId;
 
             const data = await callApi(`/ui/users/${userId}`);
             if (data.ok) {
                 currentUser = data.user;
-                document.getElementById('currentUserName').textContent = currentUser.name;
+                document.getElementById('currentUserName').textContent = currentUser.name || currentUser.username || '用户' + currentUser.id;
                 document.getElementById('currentUserId').textContent = 'ID: ' + currentUser.id;
                 document.getElementById('userInfo').style.display = 'block';
             }
@@ -427,7 +500,7 @@
         if (age) updateData.age = parseInt(age);
 
         try {
-            const data = await callApi('/ui/profile', {
+            const data = await callApi('/ui/users/profile', {
                 method: 'PUT',
                 body: JSON.stringify(updateData)
             });
@@ -454,7 +527,7 @@
         }
 
         try {
-            const data = await callApi('/ui/account', {
+            const data = await callApi(`/ui/users/${currentUser.id}`, {
                 method: 'DELETE'
             });
 
@@ -556,6 +629,70 @@
         }
     }
 
+    // 显示关注列表
+    async function showFollowingList() {
+        if (!currentUser) return;
+        try {
+            const data = await callApi(`/ui/users/${currentUser.id}/following`);
+            if (data.ok) {
+                showListModal('我的关注', data.items);
+            } else {
+                alert('获取关注列表失败: ' + data.error);
+            }
+        } catch (error) {
+            alert('获取关注列表失败: ' + error.message);
+        }
+    }
+
+    // 显示粉丝列表
+    async function showFollowersList() {
+        if (!currentUser) return;
+        try {
+            const data = await callApi(`/ui/users/${currentUser.id}/followers`);
+            if (data.ok) {
+                showListModal('我的粉丝', data.items);
+            } else {
+                alert('获取粉丝列表失败: ' + data.error);
+            }
+        } catch (error) {
+            alert('获取粉丝列表失败: ' + error.message);
+        }
+    }
+
+    // 显示列表模态框
+    function showListModal(title, items) {
+        document.getElementById('listModalTitle').textContent = title;
+        const list = document.getElementById('listModalContent');
+        list.innerHTML = '';
+
+        if (!items || items.length === 0) {
+            list.innerHTML = '<li class="muted">暂无数据</li>';
+        } else {
+            items.forEach(item => {
+                const li = document.createElement('li');
+                li.style.padding = '8px';
+                li.style.borderBottom = '1px solid #eee';
+                li.style.display = 'flex';
+                li.style.justifyContent = 'space-between';
+                li.style.alignItems = 'center';
+                li.innerHTML = `
+                    <span>${item.name} (ID: ${item.id})</span>
+                    <button onclick="searchUserById(${item.id}); document.getElementById('listModal').style.display='none'">查看</button>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        document.getElementById('listModal').style.display = 'block';
+    }
+
+    // 通过ID搜索用户（辅助函数）
+    function searchUserById(id) {
+        document.getElementById('searchUserId').value = id;
+        switchTab('users');
+        searchUser();
+    }
+
     // 选择食谱
     async function selectRecipe(id) {
         currentRecipeId = id;
@@ -571,7 +708,7 @@
                             <b>作者:</b> ${recipe.author} (ID: ${recipe.authorId})<br>
                             <b>分类:</b> ${recipe.category}<br>
                             <b>评分:</b> ${recipe.rating || '无'}<br>
-                            <b>创建时间:</b> ${recipe.createdAt}
+                            <b>创建时间:</b> ${formatDate(recipe.createdAt)}
                         </div>
                         <div style="margin: 12px 0;">
                             <h4>描述:</h4>
@@ -608,9 +745,9 @@
                     li.innerHTML = `
                             <div class="row">
                                 <b>${comment.authorName} (ID: ${comment.authorId})</b>
-                                <span class="muted">${comment.createdAt}</span>
-                                <button class="like-btn ${comment.liked ? 'liked' : ''}" onclick="likeComment(${comment.id})">
-                                    ❤️ ${comment.likes}
+                                <span class="muted">${formatDate(comment.createdAt)}</span>
+                                <button class="like-btn ${comment.liked ? 'liked' : ''}" onclick="likeComment(${comment.id}, ${comment.liked === true})">
+                                    ${comment.liked ? '❤️' : '🤍'} ${comment.likes}
                                 </button>
                             </div>
                             <div>评分: ${comment.rating}★</div>
@@ -627,10 +764,17 @@
         }
     }
 
-    // 点赞评论
-    async function likeComment(commentId) {
+    // 点赞/取消点赞评论
+    async function likeComment(commentId, isLiked) {
+        console.log('likeComment called:', commentId, isLiked, typeof isLiked);
         try {
-            const data = await callApi(`/ui/comments/${commentId}/like`, {
+            const url = isLiked
+                ? `/ui/comments/${commentId}/unlike`
+                : `/ui/comments/${commentId}/like`;
+
+            console.log('Requesting URL:', url);
+
+            const data = await callApi(url, {
                 method: 'POST'
             });
 
@@ -639,9 +783,12 @@
                 if (currentRecipeId) {
                     loadComments(currentRecipeId);
                 }
+            } else {
+                alert('操作失败: ' + (data.error || '未知错误'));
             }
         } catch (error) {
-            console.error('点赞失败:', error);
+            console.error('操作失败:', error);
+            alert('操作失败: ' + error.message);
         }
     }
 
@@ -752,8 +899,8 @@
                 const li = document.createElement('li');
                 li.className = 'recipe-item';
                 li.innerHTML = `
-                        <strong>${item.title}</strong><br>
-                        <span class="muted">作者: ${item.authorName} (ID: ${item.authorId}) | 分类: ${item.category} | 评分: ${item.rating || '无'}</span>
+                        <strong>${item.name}</strong><br>
+                        <span class="muted">作者: ${item.authorName} (ID: ${item.authorId}) | 评分: ${item.aggregatedRating || '无'} | 时间: ${formatDate(item.datePublished)}</span>
                     `;
                 li.onclick = () => selectRecipe(item.recipeId);
                 feedList.appendChild(li);
@@ -856,8 +1003,9 @@
 
         if (token) {
             // 验证token是否有效
-            try {
-                const payload = JSON.parse(atob(token.split('.')[1]));
+            const payload = parseToken(token);
+
+            if (payload) {
                 const exp = payload.exp;
                 const now = Date.now() / 1000;
 
@@ -868,9 +1016,15 @@
                     loadCurrentUserInfo();
                     loadRecipes();
                     loadCategories();
+                } else {
+                    // token过期
+                    console.log('Token已过期');
+                    token = '';
+                    localStorage.removeItem('ui_token');
                 }
-            } catch (error) {
-                // token无效，清除token
+            } else {
+                // token格式错误
+                console.log('Token格式错误');
                 token = '';
                 localStorage.removeItem('ui_token');
             }
@@ -892,6 +1046,14 @@
         document.getElementById('searchBtn').addEventListener('click', () => {
             currentPage = 1;
             loadRecipes();
+        });
+        document.getElementById('searchRecipeIdBtn').addEventListener('click', () => {
+            const id = document.getElementById('searchRecipeIdInput').value.trim();
+            if (id) {
+                selectRecipe(id);
+            } else {
+                alert('请输入食谱ID');
+            }
         });
         document.getElementById('query').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
