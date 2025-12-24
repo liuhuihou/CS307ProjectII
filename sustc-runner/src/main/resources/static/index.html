@@ -226,6 +226,12 @@
                         <option value="西餐">西餐</option>
                         <option value="日料">日料</option>
                     </select>
+                    <select id="sortOrder">
+                        <option value="date_desc">发布时间降序</option>
+                        <option value="id_desc">ID 降序</option>
+                        <option value="id_asc">ID 升序</option>
+                        <option value="rating_desc">评分降序</option>
+                    </select>
                     <button id="searchBtn">搜索</button>
                     <button id="createRecipeBtn">创建新食谱</button>
                 </div>
@@ -639,10 +645,12 @@
     async function loadRecipes() {
         const query = document.getElementById('query').value.trim();
         const category = document.getElementById('category').value;
+        const sort = document.getElementById('sortOrder').value;
 
         let url = `/ui/recipes?page=${currentPage}&pageSize=${pageSize}`;
         if (query) url += '&q=' + encodeURIComponent(query);
         if (category) url += '&category=' + encodeURIComponent(category);
+        if (sort) url += '&sort=' + encodeURIComponent(sort);
 
         try {
             const data = await callApi(url);
@@ -654,7 +662,7 @@
                 li.className = 'recipe-item';
                 li.innerHTML = `
                         <strong>${recipe.title}</strong> (ID: ${recipe.id})<br>
-                        <span class="muted">作者: ${recipe.author} | 分类: ${recipe.category} | 评分: ${recipe.rating || '无'}</span>
+                        <span class="muted">作者: ${recipe.author} | 分类: ${recipe.category} | 评分: ${recipe.rating || '无'} | 时间: ${formatDate(recipe.createdAt)}</span>
                     `;
                 li.onclick = () => selectRecipe(recipe.id);
                 recipeList.appendChild(li);
@@ -1189,6 +1197,10 @@
 
         // 食谱管理
         document.getElementById('searchBtn').addEventListener('click', () => {
+            currentPage = 1;
+            loadRecipes();
+        });
+        document.getElementById('sortOrder').addEventListener('change', () => {
             currentPage = 1;
             loadRecipes();
         });

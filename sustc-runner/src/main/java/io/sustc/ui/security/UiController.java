@@ -168,10 +168,22 @@ public class UiController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String q,
-            @RequestParam(required = false) String category
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String sort
     ) {
         try {
-            var result = recipeService.searchRecipes(q, category, null, page, pageSize, "date_published DESC");
+            String backendSort = "date_desc";
+            if (sort != null) {
+                switch (sort) {
+                    case "rating_desc": backendSort = "rating_desc"; break;
+                    case "calories_asc": backendSort = "calories_asc"; break;
+                    case "id_desc": backendSort = "id_desc"; break;
+                    case "id_asc": backendSort = "id_asc"; break;
+                    default: backendSort = "date_desc";
+                }
+            }
+
+            var result = recipeService.searchRecipes(q, category, null, page, pageSize, backendSort);
             if (result == null || result.getItems() == null) {
                 return Map.of("ok", true, "page", page, "pageSize", pageSize, "items", List.of(), "total", 0);
             }
@@ -452,6 +464,7 @@ public class UiController {
         } catch (Exception e) {
             // 如果找不到用户或密码，保持为空，Service层可能会报错
             System.err.println("Failed to fetch password for user " + userId + ": " + e.getMessage());
+            throw new RuntimeException("User not found or deleted (ID: " + userId + ")");
         }
         return auth;
     }
