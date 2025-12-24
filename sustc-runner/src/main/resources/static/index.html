@@ -132,6 +132,50 @@
     </div>
 </div>
 
+<!-- 创建食谱模态框 -->
+<div id="createRecipeModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="background: white; width: 500px; margin: 50px auto; padding: 20px; border-radius: 8px; max-height: 90vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0;">创建新食谱</h3>
+            <button onclick="document.getElementById('createRecipeModal').style.display='none'" style="border: none; background: none; font-size: 20px; cursor: pointer;">&times;</button>
+        </div>
+        <div class="auth-form" style="margin: 0; border: none; padding: 0; background: none;">
+            <div class="row">
+                <label style="width: 80px;">标题:</label>
+                <input id="newRecipeTitle" style="flex: 1;" placeholder="食谱标题" />
+            </div>
+            <div class="row">
+                <label style="width: 80px;">分类:</label>
+                <select id="newRecipeCategory" style="flex: 1;">
+                    <option value="中餐">中餐</option>
+                    <option value="西餐">西餐</option>
+                    <option value="日料">日料</option>
+                    <option value="其他">其他</option>
+                </select>
+            </div>
+            <div class="row">
+                <label style="width: 80px;">描述:</label>
+                <textarea id="newRecipeDesc" style="flex: 1;" placeholder="食谱描述"></textarea>
+            </div>
+            <div class="row">
+                <label style="width: 80px;">食材:</label>
+                <textarea id="newRecipeIngredients" style="flex: 1;" placeholder="食材列表，用逗号或换行分隔"></textarea>
+            </div>
+            <div class="row">
+                <label style="width: 80px;">卡路里:</label>
+                <input id="newRecipeCalories" type="number" style="flex: 1;" placeholder="可选" />
+            </div>
+            <div class="row">
+                <label style="width: 80px;">烹饪时间:</label>
+                <input id="newRecipeCookTime" style="flex: 1;" placeholder="例如: 30分钟 (可选)" />
+            </div>
+            <div class="row" style="justify-content: flex-end; margin-top: 20px;">
+                <button onclick="submitRecipe()" style="background: #007bff; color: white; border: none; padding: 8px 20px;">提交</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 主菜单容器 -->
 <div id="mainMenu" style="display: none;">
     <!-- 认证区域 -->
@@ -299,6 +343,7 @@
     let pageSize = 20;
     let totalPages = 1;
     let totalItems = 0;
+    let recipeCache = new Map(); // 前端缓存
 
     // 格式化日期
     function formatDate(timestamp) {
@@ -686,6 +731,59 @@
         document.getElementById('listModal').style.display = 'block';
     }
 
+    // 显示创建食谱模态框
+    function showCreateRecipeModal() {
+        document.getElementById('newRecipeTitle').value = '';
+        document.getElementById('newRecipeDesc').value = '';
+        document.getElementById('newRecipeIngredients').value = '';
+        document.getElementById('newRecipeCalories').value = '';
+        document.getElementById('newRecipeCookTime').value = '';
+        document.getElementById('createRecipeModal').style.display = 'block';
+    }
+
+    // 提交新食谱
+    async function submitRecipe() {
+        const title = document.getElementById('newRecipeTitle').value.trim();
+        const category = document.getElementById('newRecipeCategory').value;
+        const description = document.getElementById('newRecipeDesc').value.trim();
+        const ingredients = document.getElementById('newRecipeIngredients').value.trim();
+        const calories = document.getElementById('newRecipeCalories').value.trim();
+        const cookTime = document.getElementById('newRecipeCookTime').value.trim();
+
+        if (!title || !description || !ingredients) {
+            alert('标题、描述和食材不能为空');
+            return;
+        }
+
+        try {
+            const body = {
+                title,
+                category,
+                description,
+                ingredients,
+                calories: calories ? parseFloat(calories) : null,
+                cookTime: cookTime || null
+            };
+
+            const data = await callApi('/ui/recipes', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+
+            if (data.ok) {
+                alert('食谱创建成功!');
+                document.getElementById('createRecipeModal').style.display = 'none';
+                // 刷新列表
+                currentPage = 1;
+                loadRecipes();
+            } else {
+                alert('创建失败: ' + (data.error || '未知错误'));
+            }
+        } catch (error) {
+            alert('创建失败: ' + error.message);
+        }
+    }
+
     // 通过ID搜索用户（辅助函数）
     function searchUserById(id) {
         document.getElementById('searchUserId').value = id;
@@ -698,33 +796,43 @@
         currentRecipeId = id;
 
         try {
-            const data = await callApi(`/ui/recipes/${id}`);
-            if (data.ok) {
-                const recipe = data.recipe;
-                document.getElementById('recipeDetail').innerHTML = `
-                        <h3>${recipe.title}</h3>
-                        <div class="row">
-                            <b>食谱ID:</b> ${recipe.id}<br>
-                            <b>作者:</b> ${recipe.author} (ID: ${recipe.authorId})<br>
-                            <b>分类:</b> ${recipe.category}<br>
-                            <b>评分:</b> ${recipe.rating || '无'}<br>
-                            <b>创建时间:</b> ${formatDate(recipe.createdAt)}
-                        </div>
-                        <div style="margin: 12px 0;">
-                            <h4>描述:</h4>
-                            <p>${recipe.description}</p>
-                        </div>
-                        <div>
-                            <h4>食材:</h4>
-                            <p>${recipe.ingredients}</p>
-                        </div>
-                    `;
-
-                // 加载评论
-                loadComments(id);
+            let recipe;
+            // 检查缓存
+            if (recipeCache.has(id)) {
+                console.log('使用缓存加载食谱:', id);
+                recipe = recipeCache.get(id);
             } else {
-                document.getElementById('recipeDetail').innerHTML = '<div class="err">无法加载食谱详情</div>';
+                const data = await callApi(`/ui/recipes/${id}`);
+                if (data.ok) {
+                    recipe = data.recipe;
+                    recipeCache.set(id, recipe); // 写入缓存
+                } else {
+                    document.getElementById('recipeDetail').innerHTML = '<div class="err">无法加载食谱详情</div>';
+                    return;
+                }
             }
+
+            document.getElementById('recipeDetail').innerHTML = `
+                    <h3>${recipe.title}</h3>
+                    <div class="row">
+                        <b>食谱ID:</b> ${recipe.id}<br>
+                        <b>作者:</b> ${recipe.author} (ID: ${recipe.authorId})<br>
+                        <b>分类:</b> ${recipe.category}<br>
+                        <b>评分:</b> ${recipe.rating || '无'}<br>
+                        <b>创建时间:</b> ${formatDate(recipe.createdAt)}
+                    </div>
+                    <div style="margin: 12px 0;">
+                        <h4>描述:</h4>
+                        <p>${recipe.description}</p>
+                    </div>
+                    <div>
+                        <h4>食材:</h4>
+                        <p>${recipe.ingredients}</p>
+                    </div>
+                `;
+
+            // 加载评论
+            loadComments(id);
         } catch (error) {
             document.getElementById('recipeDetail').innerHTML = '<div class="err">加载食谱详情失败</div>';
             console.error('加载食谱详情失败:', error);
@@ -1062,7 +1170,7 @@
             }
         });
         document.getElementById('createRecipeBtn').addEventListener('click', () => {
-            alert('创建食谱功能待实现');
+            showCreateRecipeModal();
         });
 
         // 评论管理

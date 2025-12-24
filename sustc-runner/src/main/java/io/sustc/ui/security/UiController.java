@@ -231,12 +231,18 @@ public class UiController {
             long userId = (long) req.getAttribute("uiUserId");
             AuthInfo auth = createAuthInfo(userId);
 
+            String ingredientsStr = String.valueOf(body.get("ingredients"));
+            String[] ingredients = ingredientsStr.split("[,，\\n]"); // 支持逗号(中英文)和换行分隔
+            for (int i = 0; i < ingredients.length; i++) {
+                ingredients[i] = ingredients[i].trim();
+            }
+
             RecipeRecord recipeRecord = RecipeRecord.builder()
                     .name(String.valueOf(body.get("title")))
                     .description(String.valueOf(body.get("description")))
-                    .recipeIngredientParts(new String[]{String.valueOf(body.get("ingredients"))})
+                    .recipeIngredientParts(ingredients)
                     .recipeCategory(String.valueOf(body.get("category")))
-                    .calories(body.containsKey("calories") ? Float.valueOf(String.valueOf(body.get("calories"))) : null)
+                    .calories(body.containsKey("calories") && !String.valueOf(body.get("calories")).isEmpty() ? Float.valueOf(String.valueOf(body.get("calories"))) : null)
                     .cookTime(body.containsKey("cookTime") ? String.valueOf(body.get("cookTime")) : null)
                     .build();
 
