@@ -22,6 +22,7 @@ import java.util.*;
 public class UserServiceImpl implements UserService {
 
     @Autowired
+    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
     private JdbcTemplate jdbcTemplate;
 
     @Override
@@ -33,7 +34,7 @@ public class UserServiceImpl implements UserService {
         }
 
         // Check name uniqueness
-        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM users WHERE AuthorName = ? AND IsDeleted = false", Integer.class, req.getName());
+        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM users WHERE AuthorName = ?", Integer.class, req.getName());
         if (count != null && count > 0) {
             return -1;
         }
