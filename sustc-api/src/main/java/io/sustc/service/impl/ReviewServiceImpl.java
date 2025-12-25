@@ -5,8 +5,8 @@ import io.sustc.dto.PageResult;
 import io.sustc.dto.RecipeRecord;
 import io.sustc.dto.ReviewRecord;
 import io.sustc.service.ReviewService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,11 +21,15 @@ import java.util.Map;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class ReviewServiceImpl implements ReviewService {
 
-    private final JdbcTemplate jdbcTemplate;
-    private final DataSource dataSource;
+    @Autowired
+    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
+    private DataSource dataSource;
 
     @Override
     @Transactional
