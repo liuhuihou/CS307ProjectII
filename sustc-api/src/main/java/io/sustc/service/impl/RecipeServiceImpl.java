@@ -90,9 +90,6 @@ public class RecipeServiceImpl implements RecipeService {
                 case "calories_asc":
                     sqlBuilder.append(" ORDER BY r.Calories ASC, r.RecipeId DESC");
                     break;
-                case "id_asc":
-                    sqlBuilder.append(" ORDER BY r.RecipeId ASC");
-                    break;
                 default:
                     sqlBuilder.append(" ORDER BY r.RecipeId DESC");
                     break;
