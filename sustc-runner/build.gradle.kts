@@ -22,6 +22,7 @@ dependencies {
     implementation(platform("org.springframework.shell:spring-shell-dependencies:2.1.13"))
     implementation("org.springframework.shell:spring-shell-starter")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
 
     // 添加OpenCSV依赖
     implementation("com.opencsv:opencsv:5.7.1")
