@@ -9,7 +9,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -254,7 +253,7 @@ public class UiController {
                     .description(String.valueOf(body.get("description")))
                     .recipeIngredientParts(ingredients)
                     .recipeCategory(String.valueOf(body.get("category")))
-                    .calories(body.containsKey("calories") && !String.valueOf(body.get("calories")).isEmpty() ? Float.valueOf(String.valueOf(body.get("calories"))) : null)
+                    .calories(parseFloatSafely(body.get("calories")))
                     .cookTime(body.containsKey("cookTime") ? String.valueOf(body.get("cookTime")) : null)
                     .build();
 
@@ -281,16 +280,14 @@ public class UiController {
             List<Map<String, Object>> items = reviews.getItems().stream()
                     .map(review -> {
                         Object rating = review.getRating();
-                        Double ratingValue = null;
-                        if (rating != null) {
-                            if (rating instanceof Number) {
-                                ratingValue = ((Number) rating).doubleValue();
-                            } else {
-                                try {
-                                    ratingValue = Double.parseDouble(String.valueOf(rating));
-                                } catch (NumberFormatException e) {
-                                    ratingValue = 0.0;
-                                }
+                        Double ratingValue = 0.0;
+                        if (rating instanceof Number) {
+                            ratingValue = ((Number) rating).doubleValue();
+                        } else if (rating != null) {
+                            try {
+                                ratingValue = Double.parseDouble(String.valueOf(rating));
+                            } catch (NumberFormatException e) {
+                                ratingValue = 0.0;
                             }
                         }
 
@@ -318,6 +315,20 @@ public class UiController {
             return Map.of("ok", false, "error", "获取评论失败: " + e.getMessage());
         }
     }
+
+
+
+    private Float parseFloatSafely(Object obj) {
+        if (obj == null) return null;
+        String s = String.valueOf(obj);
+        if (s.isEmpty() || s.equalsIgnoreCase("null")) return null;
+        try {
+            return Float.valueOf(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
 
     /**
      * 添加评论
@@ -421,7 +432,7 @@ public class UiController {
             String sql = "SELECT u.AuthorId as id, u.AuthorName as name FROM users u " +
                          "JOIN user_follows f ON u.AuthorId = f.followingid " +
                          "WHERE f.followerid = ?";
-            List<Map<String, Object>> following = jdbcTemplate.queryForList(sql, userId);
+            List<Map<String, Object>> following = jdbcTemplate.queryForList(sql, new Object[]{userId});
             return Map.of("ok", true, "items", following);
         } catch (Exception e) {
             return Map.of("ok", false, "error", "获取关注列表失败: " + e.getMessage());
@@ -437,7 +448,7 @@ public class UiController {
             String sql = "SELECT u.AuthorId as id, u.AuthorName as name FROM users u " +
                          "JOIN user_follows f ON u.AuthorId = f.followerid " +
                          "WHERE f.followingid = ?";
-            List<Map<String, Object>> followers = jdbcTemplate.queryForList(sql, userId);
+            List<Map<String, Object>> followers = jdbcTemplate.queryForList(sql, new Object[]{userId});
             return Map.of("ok", true, "items", followers);
         } catch (Exception e) {
             return Map.of("ok", false, "error", "获取粉丝列表失败: " + e.getMessage());
@@ -459,7 +470,7 @@ public class UiController {
         // 从数据库获取密码
         try {
             String sql = "SELECT Password FROM users WHERE AuthorId = ? AND IsDeleted = false";
-            String password = jdbcTemplate.queryForObject(sql, String.class, userId);
+            String password = jdbcTemplate.queryForObject(sql, String.class, new Object[]{userId});
             auth.setPassword(password);
         } catch (Exception e) {
             // 如果找不到用户或密码，保持为空，Service层可能会报错
@@ -472,7 +483,7 @@ public class UiController {
     private Long getUserIdByUsername(String username) {
         try {
             String sql = "SELECT AuthorId FROM users WHERE AuthorName = ? AND IsDeleted = false";
-            return jdbcTemplate.queryForObject(sql, Long.class, username);
+            return jdbcTemplate.queryForObject(sql, Long.class, new Object[]{username});
         } catch (Exception e) {
             return null;
         }
@@ -481,7 +492,7 @@ public class UiController {
     private String getUsernameById(long userId) {
         try {
             String sql = "SELECT AuthorName FROM users WHERE AuthorId = ? AND IsDeleted = false";
-            return jdbcTemplate.queryForObject(sql, String.class, userId);
+            return jdbcTemplate.queryForObject(sql, String.class, new Object[]{userId});
         } catch (Exception e) {
             return "未知用户";
         }
@@ -490,7 +501,7 @@ public class UiController {
     private boolean isLikedByUser(long reviewId, long userId) {
         try {
             String sql = "SELECT COUNT(*) FROM review_likes WHERE reviewid = ? AND authorid = ?";
-            Integer count = jdbcTemplate.queryForObject(sql, Integer.class, reviewId, userId);
+            Integer count = jdbcTemplate.queryForObject(sql, Integer.class, new Object[]{reviewId, userId});
             return count != null && count > 0;
         } catch (Exception e) {
             return false;
