@@ -27,9 +27,11 @@ import java.util.Objects;
 public class DatabaseServiceImpl implements DatabaseService {
 
     @Autowired
+    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
     private DataSource dataSource;
 
     @Autowired
+    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
     private JdbcTemplate jdbcTemplate;
 
     @Override
@@ -55,11 +57,13 @@ public class DatabaseServiceImpl implements DatabaseService {
 
         log.info("Inserting {} users...", userRecords.size());
         batchInsertUsers(userRecords);
+        resetUserIdSequence();
         log.info("Inserting user follows...");
         batchInsertUserFollows(userRecords);
 
         log.info("Inserting {} recipes...", recipeRecords.size());
         batchInsertRecipes(recipeRecords);
+        resetRecipeIdSequence();
         log.info("Inserting recipe ingredients...");
         batchInsertRecipeIngredients(recipeRecords);
 
@@ -367,34 +371,37 @@ public class DatabaseServiceImpl implements DatabaseService {
     }
 
     private void resetUserIdSequence() {
-        jdbcTemplate.execute(
-                "SELECT setval(" +
-                        "pg_get_serial_sequence('public.users','authorid'), " +
-                        "COALESCE((SELECT MAX(authorid) FROM public.users), 0), " +
-                        "true" +
-                        ")"
-        );
+        String sql = "DO $$ " +
+                "DECLARE " +
+                "max_id BIGINT; " +
+                "BEGIN " +
+                "SELECT COALESCE(MAX(authorid), 0) + 1 INTO max_id FROM users; " +
+                "EXECUTE 'ALTER TABLE users ALTER COLUMN authorid RESTART WITH ' || max_id; " +
+                "END $$;";
+        jdbcTemplate.execute(sql);
     }
 
     private void resetRecipeIdSequence() {
-        jdbcTemplate.execute(
-                "SELECT setval(" +
-                        "pg_get_serial_sequence('public.recipes','recipeid'), " +
-                        "COALESCE((SELECT MAX(recipeid) FROM public.recipes), 0), " +
-                        "true" +
-                        ")"
-        );
+        String sql = "DO $$ " +
+                "DECLARE " +
+                "max_id BIGINT; " +
+                "BEGIN " +
+                "SELECT COALESCE(MAX(recipeid), 0) + 1 INTO max_id FROM recipes; " +
+                "EXECUTE 'ALTER TABLE recipes ALTER COLUMN recipeid RESTART WITH ' || max_id; " +
+                "END $$;";
+        jdbcTemplate.execute(sql);
     }
 
     // 将 reviews 的 Identity 序列推进到当前最大主键，防止后续 DEFAULT 产生冲突
     private void resetReviewIdSequence() {
-        jdbcTemplate.execute(
-                "SELECT setval(" +
-                        "pg_get_serial_sequence('public.reviews','reviewid'), " +
-                        "COALESCE((SELECT MAX(reviewid) FROM public.reviews), 0), " +
-                        "true" +
-                        ")"
-        );
+        String sql = "DO $$ " +
+                "DECLARE " +
+                "max_id BIGINT; " +
+                "BEGIN " +
+                "SELECT COALESCE(MAX(reviewid), 0) + 1 INTO max_id FROM reviews; " +
+                "EXECUTE 'ALTER TABLE reviews ALTER COLUMN reviewid RESTART WITH ' || max_id; " +
+                "END $$;";
+        jdbcTemplate.execute(sql);
     }
 
     @Override
