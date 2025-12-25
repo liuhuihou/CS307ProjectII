@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 public class RecipeServiceImpl implements RecipeService {
 
     @Autowired
+    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
     private JdbcTemplate jdbcTemplate;
 
     @Override
@@ -308,11 +309,16 @@ public class RecipeServiceImpl implements RecipeService {
         if (auth == null) {
             throw new SecurityException("Auth info is null");
         }
-        String sql = "SELECT IsDeleted FROM users WHERE AuthorId = ?";
+        String sql = "SELECT Password, IsDeleted FROM users WHERE AuthorId = ?";
         try {
-            Boolean isDeleted = jdbcTemplate.queryForObject(sql, Boolean.class, auth.getAuthorId());
+            Map<String, Object> user = jdbcTemplate.queryForMap(sql, auth.getAuthorId());
+            Boolean isDeleted = (Boolean) user.get("IsDeleted");
             if (isDeleted == null || isDeleted) {
                 throw new SecurityException("User is deleted or does not exist");
+            }
+            String storedPwd = (String) user.get("Password");
+            if (storedPwd == null || !storedPwd.equals(auth.getPassword())) {
+                throw new SecurityException("Invalid password");
             }
         } catch (EmptyResultDataAccessException e) {
             throw new SecurityException("User does not exist");

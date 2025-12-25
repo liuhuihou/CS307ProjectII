@@ -22,6 +22,7 @@ import java.util.*;
 public class UserServiceImpl implements UserService {
 
     @Autowired
+    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
     private JdbcTemplate jdbcTemplate;
 
     @Override
